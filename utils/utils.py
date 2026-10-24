@@ -2,12 +2,21 @@ import argparse
 import random
 import numpy as np
 import torch
+from torch import nn
 from monai.utils import set_determinism
 
 import os
 import torch.nn.functional as F
-
-from torch import nn
+ 
+def disable_batchnorm_running_stats(model):
+    count = 0
+    for module in model.modules():
+        if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+            module.track_running_stats = False
+            module.running_mean = None
+            module.running_var = None
+            count += 1
+    print(f"[disable_batchnorm_running_stats] Disabled BN running stats on {count} layer(s) in {type(model).__name__}")
 
 def str2bool(v):
     if isinstance(v, bool): return v
@@ -138,12 +147,5 @@ def postprocess_masks(masks_dict):
         masks[i, 0] = cur_mask.squeeze()
         ious[i] = masks_dict[i]['iou_predictions'].squeeze()
     return masks, ious
-    
-def disable_batchnorm_running_stats(model):
-    for module in model.modules():
-        if isinstance(module, nn.BatchNorm2d) or isinstance(module, nn.BatchNorm3d):
-            module.track_running_stats = False
-            module.running_mean = None
-            module.running_var = None
 
 

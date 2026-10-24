@@ -8,27 +8,12 @@ from train import train_single_epoch, train_single_epoch_monai
 from utils.model_utils import get_model, get_standard_model
 from utils.dataset_utils import get_dataset
 from segment_anything.utils.transforms import ResizeLongestSide
-from segment_anything import sam_model_registry
+
 import wandb
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 def main(args=None, sam_args=None, saver=None):
-    if args['device']=='cuda':
-        args['device'] = torch.device("cuda:"+str(args['device_id']))
-    else:
-        args['device'] = torch.device("cpu")
     
-    if args['use_sam']:
-        sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
-        sam.to(device=args['device'])
-        img_dim = sam.image_encoder.img_size
-        transform = ResizeLongestSide(img_dim)
-        if args['disable_batchnorm_running_stats']:
-            disable_batchnorm_running_stats(sam)
-    else:
-        sam = None
-        img_dim = int(args['Idim'])
-        transform = None
     
     ds, ds_val = get_dataset(args, transform, img_dim)
     img_ch = ds.dataset[0][0][args['image_key']].shape[0]
@@ -152,12 +137,10 @@ if __name__ == '__main__':
     parser.add_argument('-task', '--task', default='mslesseg', help='Task type (e.g., pancreas, spleen, prostate, brats, mslesseg, tooth)', required=False)
     parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='image size', required=False)
     parser.add_argument('-order', '--order', default=85, type=int, help='image size', required=False)
-    parser.add_argument('-Idim', '--Idim', default=512, help='image size', required=False)
     parser.add_argument('-rotate', '--rotate', default=22, help='image size', required=False)
     parser.add_argument('-scale1', '--scale1', default=0.75, help='image size', required=False)
     parser.add_argument('-scale2', '--scale2', default=1.25, help='image size', required=False)
     
-    parser.add_argument('--device', default='cuda', help='device', required=False)
     
     
     
@@ -223,7 +206,6 @@ if __name__ == '__main__':
     parser.add_argument('--decoder_channels', type=int, nargs='+', default=[], help='Decoder channels for UnetLike segmentor/aggregator')
     
     
-    parser.add_argument('--disable_batchnorm_running_stats', type=str2bool, default=False, help='Disable batchnorm running stats')
     
 
     
