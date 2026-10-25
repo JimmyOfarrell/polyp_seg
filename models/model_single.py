@@ -25,19 +25,19 @@ class Decoder(nn.Module):
         return out
 
 class SmallDecoder(nn.Module):
-    def __init__(self, full_features, out):
-        super(SmallDecoder, self).__init__()
-        self.up1 = UpBlockSkip(full_features[3] + full_features[2], full_features[2],
-                               func='relu', drop=0)
-        self.up2 = UpBlockSkip(full_features[2] + full_features[1], full_features[1],
-                               func='relu', drop=0)
+    def __init__(self, full_features, out, use_tanh=True):
+        super().__init__()
+        self.use_tanh = use_tanh
+
+        self.up1 = UpBlockSkip(full_features[3] + full_features[2], full_features[2], func='relu', drop=0)
+        self.up2 = UpBlockSkip(full_features[2] + full_features[1], full_features[1], func='relu', drop=0)
         self.final = CNNBlock(full_features[1], out, kernel_size=3, drop=0)
 
     def forward(self, x):
         z = self.up1(x[3], x[2])
         z = self.up2(z, x[1])
-        out = torch.tanh(self.final(z))#F.tanh(self.final(z))
-        # out = self.final(z)
+        out = self.final(z)
+        if self.use_tanh: out = torch.tanh(out)
         return out
     
 class SparseDecoder(nn.Module):

@@ -6,6 +6,7 @@ import shlex
 from segment_anything import sam_model_registry
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 from utils.dataset_utils import get_train_val_dataloaders
+from utils.model_utils import get_model, get_standard_model
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -93,15 +94,16 @@ def main(args=None, sam_args=None, saver=None):
     print('='*60)
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
+    model = get_model(args)
 
-    if not args['use_standard_net']:
+    """if not args['use_standard_net']:
         model = get_model(args)
         print(f"[MAIN] Phase 1 model: {type(model).__name__} (prompt learner)")
     else:
         model = get_standard_model(args)
         print(f"[MAIN] Phase 2 model: {type(model).__name__} (aggregator)")
     model = model.to(args['device'])
-    print(f"[MAIN] Model moved to {args['device']}")
+    print(f"[MAIN] Model moved to {args['device']}")"""
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
 
@@ -145,6 +147,9 @@ For usage examples, see README.md
     parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
     parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
     parser.add_argument('--use_standard_net', type=str2bool, default=False, help='Use standard segmentor (phase 2) vs prompt learner (phase 1)')
+    parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='Use depthwise HarDNet')
+    parser.add_argument('-order', '--order', default=68, type=int, help='HarDNet variant: 39 | 68 | 85')
+    parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     args = vars(parser.parse_args())
     print(parser.description)
 
