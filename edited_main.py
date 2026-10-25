@@ -5,7 +5,9 @@ import sys
 import shlex
 from segment_anything import sam_model_registry
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
+from utils.dataset_utils import get_train_val_dataloaders
 from utils.saver import Saver
+
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main(args=None, sam_args=None, saver=None):
@@ -90,6 +92,7 @@ def main(args=None, sam_args=None, saver=None):
         print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
     print('='*60)
 
+    train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
 
@@ -125,6 +128,13 @@ For usage examples, see README.md
     parser.add_argument('--use_cuda_amp', type=str2bool, default=True, help='Use mixed precision training')
     parser.add_argument('--disable_batchnorm_running_stats', type=str2bool, default=False, help='Disable batchnorm running stats')
     parser.add_argument('-Idim', '--Idim', type=int, default=512, help='Input image size (resize resolution)')
+    parser.add_argument('--image_key', type=str, default='image',help='Key for image in the data dict')
+    parser.add_argument('--mask_key', type=str, default='mask', help='Key for mask in the data dict')
+    parser.add_argument('--split_path', type=str, default=os.path.join(PROJECT_DIR, 'data', 'split.json'), help='Path to the JSON split file')
+    parser.add_argument('--n_fold', type=int, default=0, help='Fold index')
+    parser.add_argument('-bs', '--Batch_size', type=int, default=2, help='Batch size')
+    parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
+    parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
     args = vars(parser.parse_args())
     print(parser.description)
 

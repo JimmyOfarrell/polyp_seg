@@ -15,7 +15,6 @@ from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 def main(args=None, sam_args=None, saver=None):
     
     
-    ds, ds_val = get_dataset(args, transform, img_dim)
     img_ch = ds.dataset[0][0][args['image_key']].shape[0]
     
     if not args['use_standard_net']:
@@ -129,10 +128,7 @@ def main(args=None, sam_args=None, saver=None):
 if __name__ == '__main__':
     
     parser.add_argument('-lr', '--learning_rate', default=0.01, help='learning_rate', required=False)
-    parser.add_argument('-bs', '--Batch_size', default=2, help='batch_size', required=False)
     parser.add_argument('-epoches', '--epoches', type=int, default=5000, help='number of epoches', required=False)
-    parser.add_argument('-nW', '--nW', default=0, help='evaluation iteration', required=False)
-    parser.add_argument('-nW_eval', '--nW_eval', default=0, help='evaluation iteration', required=False)
     parser.add_argument('-WD', '--WD', default=1e-4, help='evaluation iteration', required=False)
     parser.add_argument('-task', '--task', default='mslesseg', help='Task type (e.g., pancreas, spleen, prostate, brats, mslesseg, tooth)', required=False)
     parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='image size', required=False)
@@ -145,17 +141,13 @@ if __name__ == '__main__':
     
     
     parser.add_argument('--data_dir', type=str, default='', help='Path to the dataset directory', required=False)
-    parser.add_argument('--split_path', type=str, default='3DAutoSam_Pancreas/Dataset.json', help='Path to the split file')
     parser.add_argument('--train_batch_size', type=int, default=8)
     parser.add_argument('--save_every', type=int, default=10, help='Save model every n epochs')
-    parser.add_argument('--image_key', type=str, default='image',help='Modality to use for training')
-    parser.add_argument('--mask_key', type=str, default='mask', help='Mask modality')
     parser.add_argument('--spatial_crop_size', type=int, default=224, help='Spatial crop size')
     parser.add_argument('--pos_rand_crop', type=float, default=0.75, help='Positive ratio for random crop')
     parser.add_argument('--neg_rand_crop', type=float, default=0.25, help='Negative ratio for random crop')
     parser.add_argument('--axcodes', type=str, default='RAS', help='Axial codes')
     parser.add_argument('--num_slices', type=int, default=1, help='Number of slices')
-    parser.add_argument('--n_fold', type=int, default=0, help='Specify fold')
     parser.add_argument('--criterion', type=str, default='dice', choices=['dice', 'dice_ce'], help='Criterion')
     parser.add_argument('--include_background', type=str2bool, default=False, help='Include background in loss')
     parser.add_argument('--acc_steps', type=int, default=2, help='Number of accumulation steps')
