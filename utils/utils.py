@@ -16,7 +16,9 @@ def disable_batchnorm_running_stats(model):
             module.running_mean = None
             module.running_var = None
             count += 1
+    print('\n'+'='*60)        
     print(f"[disable_batchnorm_running_stats] Disabled BN running stats on {count} layer(s) in {type(model).__name__}")
+    print('='*60)
 
 def str2bool(v):
     if isinstance(v, bool): return v

@@ -96,14 +96,18 @@ def main(args=None, sam_args=None, saver=None):
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
 
-    print('\n'+'='*60)
     if not args['use_standard_net']:
+        print('\n'+'='*120)
         print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning)")
         model = get_model(args)
+        print('='*120)
     else:
+        print('\n'+'='*120)
         print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only)")
         model = get_standard_model(args)
+        print('='*120)
 
+    print('\n'+'='*60)
     model = model.to(args['device'])
     print(f"[MAIN] Model on device: {args['device']}")
     print('='*60)
