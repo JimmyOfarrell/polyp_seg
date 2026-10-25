@@ -94,13 +94,78 @@ def main(args=None, sam_args=None, saver=None):
     print('='*60)
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
+
+    print('\n'+'='*60)
     if not args['use_standard_net']:
+        print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning)")
         model = get_model(args)
     else:
+        print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only)")
         model = get_standard_model(args)
 
-    model = model.to(args['device'])    
-    
+    model = model.to(args['device'])
+    print(f"[MAIN] Model on device: {args['device']}")
+    print('='*60)
+
+    if args['disable_batchnorm_running_stats']: disable_batchnorm_running_stats(model)
+
+    if not args['use_sam']:
+        if not args['segmentor_finetune_backbone']:
+            for param in model.parameters(): param.requires_grad = False
+            for param in model.segmentor.parameters(): param.requires_grad = True
+            params_to_optimize = model.segmentor.parameters()
+        else:
+            for param in model.parameters(): param.requires_grad = True
+            params_to_optimize = model.parameters()
+    else:params_to_optimize = model.parameters()
+
+    n_total     = sum(p.numel() for p in model.parameters())
+    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_frozen    = n_total - n_trainable
+    train_ratio = 100.0 * n_trainable / max(n_total, 1)
+    bytes_per_param = next(model.parameters()).element_size()
+    param_mem_mb = n_total * bytes_per_param / (1024**2)
+    grad_mem_mb  = n_trainable * bytes_per_param / (1024**2)
+    n_tensors_trainable = sum(1 for p in model.parameters() if p.requires_grad)
+    n_tensors_total     = sum(1 for p in model.parameters())
+    devices = {str(p.device) for p in model.parameters()}
+    dtypes  = {str(p.dtype).replace('torch.','') for p in model.parameters()}
+    n_bb_tr  = sum(p.numel() for p in model.backbone.parameters() if p.requires_grad) if hasattr(model, 'backbone') else 0
+    n_bb     = sum(p.numel() for p in model.backbone.parameters()) if hasattr(model, 'backbone') else 0
+    n_dec_tr = sum(p.numel() for p in model.decoder.parameters() if p.requires_grad) if hasattr(model, 'decoder') else 0
+    n_dec    = sum(p.numel() for p in model.decoder.parameters()) if hasattr(model, 'decoder') else 0
+    n_seg_tr = sum(p.numel() for p in model.segmentor.parameters() if p.requires_grad) if getattr(model, 'segmentor', None) is not None else 0
+    n_seg    = sum(p.numel() for p in model.segmentor.parameters()) if getattr(model, 'segmentor', None) is not None else 0
+
+    phase = 'Phase 1 (SAM-guided)' if args['use_sam'] else ('Phase 2 (full fine-tune)' if args['segmentor_finetune_backbone'] else 'Phase 2 (aggregator-only)')
+
+    print('\n' + '='*60)
+    print("[MAIN] Parameter Optimization Summary")
+    print("-" * 58)
+    print(f"{'Property':<22} | {'Value'}")
+    print("-" * 58)
+    print(f"{'Phase':<22} | {phase}")
+    print(f"{'Model type':<22} | {type(model).__name__}")
+    print(f"{'Total params':<22} | {n_total:,} ({n_total/1e6:.2f}M)")
+    print(f"{'Trainable params':<22} | {n_trainable:,} ({n_trainable/1e6:.2f}M)")
+    print(f"{'Frozen params':<22} | {n_frozen:,} ({n_frozen/1e6:.2f}M)")
+    print(f"{'Trainable ratio':<22} | {train_ratio:.2f}%")
+    print(f"{'Trainable tensors':<22} | {n_tensors_trainable} / {n_tensors_total}")
+    print("-" * 58)
+    if n_bb:  print(f"{'Backbone (HarDNet)':<28} | {n_bb_tr:,} / {n_bb:,} ({100.0*n_bb_tr/max(n_bb,1):.1f}%)")
+    if n_dec: print(f"{'Decoder (SmallDecoder)':<28} | {n_dec_tr:,} / {n_dec:,} ({100.0*n_dec_tr/max(n_dec,1):.1f}%)")
+    if n_seg: print(f"{'Aggregator':<28} | {n_seg_tr:,} / {n_seg:,} ({100.0*n_seg_tr/max(n_seg,1):.1f}%)")
+    print("-" * 58)
+    print(f"{'Param memory (fp32)':<22} | {param_mem_mb:.2f} MB")
+    print(f"{'Grad memory (fp32)':<22} | {grad_mem_mb:.2f} MB")
+    print(f"{'Total (param+grad)':<22} | {param_mem_mb + grad_mem_mb:.2f} MB")
+    print("-" * 58)
+    print(f"{'Param devices':<22} | {devices}")
+    print(f"{'Param dtypes':<22} | {dtypes}")
+    print('='*60 + '\n')
+
+        
+
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
 
