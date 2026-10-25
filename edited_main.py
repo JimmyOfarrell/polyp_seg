@@ -1,5 +1,6 @@
 import torch
 import os
+import torch.optim as optim
 import argparse
 import sys
 import shlex
@@ -164,6 +165,31 @@ def main(args=None, sam_args=None, saver=None):
     print(f"{'Param dtypes':<22} | {dtypes}")
     print('='*60 + '\n')
 
+    lr, wd = float(args['learning_rate']), float(args['WD'])
+    momentum = float(args.get('momentum', 0.9))
+    if args['optim'] =='Adam':optimizer = optim.Adam(params_to_optimize, lr=lr, weight_decay=wd)
+    elif args['optim'] == 'SGD':optimizer = optim.SGD(params_to_optimize, lr=lr, weight_decay=wd, momentum=momentum)
+    elif args['optim'] == 'AdamW':optimizer = optim.AdamW(params_to_optimize, lr=lr, weight_decay=wd)
+    else: raise ValueError(f"Unsupported optimizer '{args['optim']}'. Choose from: Adam, SGD, AdamW.")
+
+    n_opt = sum(p.numel() for p in params_to_optimize)
+    n_groups = len(optimizer.param_groups)
+    print('\n' + '='*60)
+    print("[MAIN] Optimizer Summary")
+    print("-" * 58)
+    print(f"{'Property':<22} | {'Value'}")
+    print("-" * 58)
+    print(f"{'Optimizer':<22} | {type(optimizer).__name__}")
+    print(f"{'Learning rate':<22} | {lr}")
+    print(f"{'Weight decay':<22} | {wd}")
+    if args['optim'] == 'SGD':
+        print(f"{'Momentum':<22} | {momentum}")
+    print(f"{'Param groups':<22} | {n_groups}")
+    print(f"{'Total opt. params':<22} | {n_opt:,} ({n_opt/1e6:.2f}M)")
+    print(f"{'Optimizer state':<22} | {optimizer.state_dict()['param_groups'][0].get('betas', 'momentum' if args['optim']=='SGD' else 'N/A')}")
+    print('='*60 + '\n')
+
+
         
 
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
@@ -219,6 +245,10 @@ For usage examples, see README.md
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
+    parser.add_argument('-lr', '--learning_rate', default=0.01, help='Learning rate')
+    parser.add_argument('-WD', '--WD', default=1e-4, help='Weight decay')
+    parser.add_argument('--optim', type=str, default='Adam', choices=['Adam', 'SGD', 'AdamW'], help='Optimizer')
+    parser.add_argument('--momentum', type=float, default=0, help='Momentum (only used with SGD)')
     args = vars(parser.parse_args())
     print(parser.description)
 

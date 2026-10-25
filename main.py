@@ -14,43 +14,8 @@ from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 def main(args=None, sam_args=None, saver=None):
     
-    
-    if not args['use_standard_net']:
-        model = get_model(args, sam, img_ch)
-    else:
-        model = get_standard_model(args, img_ch)
-        
-    if args['disable_batchnorm_running_stats']:
-            disable_batchnorm_running_stats(model)
-    
-    if not args['use_sam']:
-        if not args['segmentor_finetune_backbone']:
-            for param in model.parameters():
-                param.requires_grad = False
-            for param in model.segmentor.parameters():
-                param.requires_grad = True
-            params_to_optimize = model.segmentor.parameters()
-        else:
-            for param in model.parameters():
-                param.requires_grad = True
-            params_to_optimize = model.parameters()
-    else:
-        # If using SAM, optimize all model parameters
-        params_to_optimize = model.parameters()
 
-    if args['optim']=='Adam':
-        optimizer = optim.Adam(params_to_optimize,
-                            lr=float(args['learning_rate']),
-                            weight_decay=float(args['WD']))
-    elif args['optim']=='SGD':
-        optimizer = optim.SGD(params_to_optimize,
-                            lr=float(args['learning_rate']),
-                            weight_decay=float(args['WD']),
-                            momentum=float(args['momentum']))
-    elif args['optim']=='AdamW':
-        optimizer = optim.AdamW(params_to_optimize,
-                            lr=float(args['learning_rate']),
-                            weight_decay=float(args['WD']))
+    
     if args['use_scheduler']:
         steps_per_epoch = len(ds)
         if args['scheduler']=='StepLR':
@@ -125,12 +90,9 @@ def main(args=None, sam_args=None, saver=None):
 
 if __name__ == '__main__':
     
-    parser.add_argument('-lr', '--learning_rate', default=0.01, help='learning_rate', required=False)
+
     parser.add_argument('-epoches', '--epoches', type=int, default=5000, help='number of epoches', required=False)
-    parser.add_argument('-WD', '--WD', default=1e-4, help='evaluation iteration', required=False)
     parser.add_argument('-task', '--task', default='mslesseg', help='Task type (e.g., pancreas, spleen, prostate, brats, mslesseg, tooth)', required=False)
-    parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='image size', required=False)
-    parser.add_argument('-order', '--order', default=85, type=int, help='image size', required=False)
     parser.add_argument('-rotate', '--rotate', default=22, help='image size', required=False)
     parser.add_argument('-scale1', '--scale1', default=0.75, help='image size', required=False)
     parser.add_argument('-scale2', '--scale2', default=1.25, help='image size', required=False)
@@ -150,8 +112,7 @@ if __name__ == '__main__':
     parser.add_argument('--include_background', type=str2bool, default=False, help='Include background in loss')
     parser.add_argument('--acc_steps', type=int, default=2, help='Number of accumulation steps')
     parser.add_argument('--cache_rate', type=float, default=.7, help='Cache rate')
-    parser.add_argument('--optim', type=str, default='Adam', help='Optimizer')
-    parser.add_argument('--momentum', type=float, default=0, help='Momentum (if SGD is used)')
+
     parser.add_argument('--use_scheduler', type=str2bool, default=False, help='If use scheduler or not')
     parser.add_argument('--scheduler', type=str, default='StepLR', choices=['StepLR', 'MultiStepLR', 'ExponentialLR', 'ReduceLROnPlateau', 'CosineAnnealingLR', 'WarmupCosineSchedule', 'WarmupLinearSchedule'], help='Scheduler')
     parser.add_argument('--scheduler_step', type=int, default=100, help='Scheduler step for StepLR, and first step of MultiStepLR')
@@ -164,7 +125,6 @@ if __name__ == '__main__':
     parser.add_argument('--warmup_epochs', type=int, default=5, help='Warmup epochs')
     parser.add_argument('--warmup_cycles', type=float, default=0.5, help='Warmup cycles')
     parser.add_argument('--schedWarmupCos_last_epoch', type=int, default=-1, help='WarmupCosineSchedule last_epoch (use only if you are resuming a training)')
-    parser.add_argument('--use_cuda_amp', type=str2bool, default=True, help='Use mixed precision training')
 
     parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save images')
     parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save images')
@@ -186,7 +146,6 @@ if __name__ == '__main__':
     parser.add_argument('--center_crop', type=str2bool, default=False, help='Center crop the input images')
     parser.add_argument('--train_with_crop', type=str2bool, default=True, help='Train with crop')
 
-    parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
     parser.add_argument('--decoder_channels', type=int, nargs='+', default=[], help='Decoder channels for UnetLike segmentor/aggregator')
     
     
