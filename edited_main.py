@@ -68,8 +68,8 @@ def main(args=None, sam_args=None, saver=None):
             args['use_cuda_amp'] = False
     print('='*60)
 
-    print('\n'+'='*60)
     if args['use_sam']:
+        print('\n'+'='*60)
         print("[MAIN] SAM model (Phase 1: SAM-guided prompt learning) Configuration")
         try: sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
         except Exception as e: raise RuntimeError(f"Failed to load SAM '{sam_args['model_type']}' from '{sam_args['sam_checkpoint']}': {e}")
@@ -84,15 +84,20 @@ def main(args=None, sam_args=None, saver=None):
         print(f"[MAIN] SAM Memory: {sam_memory_mb:.2f} MB")
         print(f"[MAIN] SAM Device: {args['device']}")
         print(f"[MAIN] SAM Mode: Frozen (eval)")
+        print('='*60)
         if args['disable_batchnorm_running_stats']:
             disable_batchnorm_running_stats(sam)
+            print('\n'+'='*60)
             print("[MAIN] BatchNorm running stats disabled for SAM.")
+            print('='*60)
     else:
         sam = None
         img_dim = int(args['Idim'])
+        print('\n'+'='*60)
         print("[MAIN] SAM is disabled. Using standard segmentor directly.")
         print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
-    print('='*60)
+        print('='*60)
+    
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
 
@@ -118,11 +123,11 @@ def main(args=None, sam_args=None, saver=None):
         if not args['segmentor_finetune_backbone']:
             for param in model.parameters(): param.requires_grad = False
             for param in model.segmentor.parameters(): param.requires_grad = True
-            params_to_optimize = model.segmentor.parameters()
+            params_to_optimize = list(model.segmentor.parameters())
         else:
             for param in model.parameters(): param.requires_grad = True
-            params_to_optimize = model.parameters()
-    else:params_to_optimize = model.parameters()
+            params_to_optimize = list(model.parameters())
+    else: params_to_optimize = list(model.parameters())
 
     n_total     = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
