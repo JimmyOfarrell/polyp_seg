@@ -93,6 +93,15 @@ def main(args=None, sam_args=None, saver=None):
     print('='*60)
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
+
+    if not args['use_standard_net']:
+        model = get_model(args)
+        print(f"[MAIN] Phase 1 model: {type(model).__name__} (prompt learner)")
+    else:
+        model = get_standard_model(args)
+        print(f"[MAIN] Phase 2 model: {type(model).__name__} (aggregator)")
+    model = model.to(args['device'])
+    print(f"[MAIN] Model moved to {args['device']}")
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
 
@@ -135,6 +144,7 @@ For usage examples, see README.md
     parser.add_argument('-bs', '--Batch_size', type=int, default=2, help='Batch size')
     parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
     parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
+    parser.add_argument('--use_standard_net', type=str2bool, default=False, help='Use standard segmentor (phase 2) vs prompt learner (phase 1)')
     args = vars(parser.parse_args())
     print(parser.description)
 

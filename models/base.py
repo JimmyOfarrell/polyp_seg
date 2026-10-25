@@ -181,22 +181,17 @@ class Segmentor2DNet(SegmentorNet):
         return x
 
 
-class ModelEmbNet(nn.Module):
-    """Base class for model embedding networks."""
+class ModelEmb2DNet(nn.Module):
     is_segmentor = False
-    is_3d = None
     is_model_emb = True
-
+    is_3d = False
+    
     def __init__(self, args, out=256):
         super().__init__()
+        if out != 256: raise ValueError(f"ModelEmb2DNet requires out=256 to match SAM's dense embedding dimension, got out={out}")
         self.args = args
         self.out = out
 
-class ModelEmb2DNet(ModelEmbNet):
-    is_3d = False
-
-          
     def preprocess(self, x):
-        if x.ndim != 4:
-            raise ValueError(f"Expected 2D input (B,C,H,W), got {x.shape}")
+        if x.ndim != 4: raise ValueError(f"ModelEmb2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)}")
         return x

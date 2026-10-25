@@ -6,7 +6,7 @@ import torch.nn as nn
 
 class ModelEmb(ModelEmb2DNet):
     def __init__(self, args, out_ch=256):
-        super().__init__(args)
+        super().__init__(args, out=out_ch)
         self.backbone = HarDNet(depth_wise=bool(int(args['depth_wise'])), arch=int(args['order']), args=args, pretrained=args['pretrained'])
         d, f = self.backbone.full_features, self.backbone.features
         self.decoder = SmallDecoder(d, out=out_ch)

@@ -15,8 +15,6 @@ from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 def main(args=None, sam_args=None, saver=None):
     
     
-    img_ch = ds.dataset[0][0][args['image_key']].shape[0]
-    
     if not args['use_standard_net']:
         model = get_model(args, sam, img_ch)
     else:
@@ -178,7 +176,6 @@ if __name__ == '__main__':
     parser.add_argument('--remove_maxpool', type=str2bool, default=False, help='Remove first maxpool when ResNet is used as embedding model')
     
     
-    parser.add_argument('--use_standard_net', type=str2bool, default=False, help='Use standard net')
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Net')
     parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', help='Net segmentor')
     parser.add_argument('--sam_zeroshot', type=str2bool, default=False, help='SAM zero shot')
