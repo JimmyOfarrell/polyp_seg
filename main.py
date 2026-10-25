@@ -174,16 +174,14 @@ if __name__ == '__main__':
     parser.add_argument('--remove_maxpool', type=str2bool, default=False, help='Remove first maxpool when ResNet is used as embedding model')
     
     
-    parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', help='Net segmentor')
     parser.add_argument('--sam_zeroshot', type=str2bool, default=False, help='SAM zero shot')
-    parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factor list for ConvUpsample segmentor')
+    
     
     
     
     parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Wandb watch')
     parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
 
-    parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--label_values', type=int, nargs='+', default=[1, 2, 4], help='Label values to discretize mask (primarily for the BRATS dataset; may not apply to other datasets)')
     parser.add_argument('--center_crop', type=str2bool, default=False, help='Center crop the input images')
     parser.add_argument('--train_with_crop', type=str2bool, default=True, help='Train with crop')

@@ -143,10 +143,9 @@ class BottleneckBlock(nn.Module):
     
 
 
-class SegmentorNet(nn.Module):
-    """Base class for segmentor networks."""
+class Segmentor2DNet(nn.Module):
     is_segmentor = True
-    is_3d = None
+    is_3d = False
 
     def __init__(self, args, out_channels):
         super().__init__()
@@ -154,27 +153,52 @@ class SegmentorNet(nn.Module):
         self.out_channels = out_channels
         self.segmentor = None
 
-    def init_segmentor_head(self, segmentor_type):
+    def init_segmentor_head(self, segmentor_type, in_channels=256):
         if segmentor_type == 'PointwiseConv':
-            self.segmentor = PointwiseCNN(in_channels=256, out_channels=self.out_channels)
+            Idim = int(self.args.get('Idim', 512))
+            self.segmentor = PointwiseCNN(in_channels=in_channels, out_channels=self.out_channels,output_size=(Idim, Idim))
         elif segmentor_type == 'ConvUpsample':
-            self.segmentor = ConvUpsample(in_channels=256, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
-        elif segmentor_type == 'UnetLike':
-            self.segmentor = UnetLikeSegmentor(in_channels=256, decoder_channels=self.args['decoder_channels'], num_classes=self.out_channels)
-        elif segmentor_type == 'TransposeConvUpsample':
-            self.segmentor = TransposeConvUpsample(in_channels=256, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
+            self.segmentor = ConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
+        elif segmentor_type == 'TransposeConvUpsample': self.segmentor = TransposeConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
+        else: raise ValueError(f"Segmentor '{segmentor_type}' not implemented. Choose from: PointwiseConv, ConvUpsample, TransposeConvUpsample.")
+
+        n_params = sum(p.numel() for p in self.segmentor.parameters())
+        Idim = int(self.args.get('Idim', 512))
+
+        print('\n' + '='*60)
+        print(f"[SEGMENTOR] Aggregator Summary: {segmentor_type}")
+        print("-" * 58)
+        print(f"{'Property':<22} | {'Value'}")
+        print("-" * 58)
+        print(f"{'Type':<22} | {segmentor_type}")
+        print(f"{'Input channels':<22} | {in_channels}")
+        print(f"{'Output channels':<22} | {self.out_channels}")
+
+        if segmentor_type == 'PointwiseConv':
+            print(f"{'Output size':<22} | ({Idim}, {Idim})")
+            print(f"{'Structure':<22} | Conv1×1 → interpolate(bilinear)")
+            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
+            print(f"{'Output shape':<22} | (B, {self.out_channels}, {Idim}, {Idim})")
         else:
-            raise ValueError('Segmentor not implemented')
+            factors = list(self.args.get('upsample_factor_list', [2, 2]))
+            scale = 1
+            for f in factors:
+                scale *= f
+            op = 'Upsample(bilinear)' if segmentor_type == 'ConvUpsample' else 'ConvTranspose2d'
+            struct = ' → '.join([f'Conv1×1 + {op}(×{f})' for f in factors]) + ' → Conv1×1'
+            print(f"{'Upsample factors':<22} | {factors}  (total ×{scale})")
+            print(f"{'Structure':<22} | {struct}")
+            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
+            print(f"{'Output shape':<22} | (B, {self.out_channels}, {scale}·H/4, {scale}·W/4)")
 
-class Segmentor2DNet(SegmentorNet):
-    is_3d = False
+        print("-" * 58)
+        print(f"{'Total parameters':<22} | {n_params:,} ({n_params/1e6:.4f}M)")
+        print("-" * 58)
+        print('='*60)
 
-          
     def preprocess(self, x):
-        if x.ndim != 4:
-            raise ValueError(f"Expected 2D input (B,C,H,W), got {x.shape}")
+        if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")
         return x
-
 
 class ModelEmb2DNet(nn.Module):
     is_segmentor = False

@@ -99,15 +99,8 @@ def main(args=None, sam_args=None, saver=None):
     else:
         model = get_standard_model(args)
 
-
-    """if not args['use_standard_net']:
-        model = get_model(args)
-        print(f"[MAIN] Phase 1 model: {type(model).__name__} (prompt learner)")
-    else:
-        model = get_standard_model(args)
-        print(f"[MAIN] Phase 2 model: {type(model).__name__} (aggregator)")
-    model = model.to(args['device'])
-    print(f"[MAIN] Model moved to {args['device']}")"""
+    model = model.to(args['device'])    
+    
     input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
 
@@ -157,6 +150,10 @@ For usage examples, see README.md
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
+    parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample', 'UnetLike'], help='Aggregator head')
+    parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
+    parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
+    parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
     args = vars(parser.parse_args())
     print(parser.description)
 
