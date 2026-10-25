@@ -56,7 +56,6 @@ def get_model(args):
    
     return model
 
-
 def get_standard_model(args, img_ch=3):
     if args['net']=='HardNetSegmentor' and args['task'] in ['pancreas', 'spleen', 'prostate', 'mslesseg']:
         model = HardNetSegmentor(args, segmentor=args['net_segmentor']).to(args['device'])

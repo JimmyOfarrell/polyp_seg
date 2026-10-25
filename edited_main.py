@@ -94,7 +94,11 @@ def main(args=None, sam_args=None, saver=None):
     print('='*60)
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
-    model = get_model(args)
+    if not args['use_standard_net']:
+        model = get_model(args)
+    else:
+        model = get_standard_model(args)
+
 
     """if not args['use_standard_net']:
         model = get_model(args)
@@ -147,9 +151,11 @@ For usage examples, see README.md
     parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
     parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
     parser.add_argument('--use_standard_net', type=str2bool, default=False, help='Use standard segmentor (phase 2) vs prompt learner (phase 1)')
+    parser.add_argument('--model_emb', type=str, default='HardNet', help='Prompt learner backbone')
     parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='Use depthwise HarDNet')
     parser.add_argument('-order', '--order', default=68, type=int, help='HarDNet variant: 39 | 68 | 85')
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
+    parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
     args = vars(parser.parse_args())
     print(parser.description)
 
