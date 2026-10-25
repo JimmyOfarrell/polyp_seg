@@ -156,6 +156,7 @@ For usage examples, see README.md
     parser.add_argument('-order', '--order', default=68, type=int, help='HarDNet variant: 39 | 68 | 85')
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
+    parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
     args = vars(parser.parse_args())
     print(parser.description)
 

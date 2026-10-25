@@ -174,7 +174,6 @@ if __name__ == '__main__':
     parser.add_argument('--remove_maxpool', type=str2bool, default=False, help='Remove first maxpool when ResNet is used as embedding model')
     
     
-    parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Net')
     parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', help='Net segmentor')
     parser.add_argument('--sam_zeroshot', type=str2bool, default=False, help='SAM zero shot')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factor list for ConvUpsample segmentor')

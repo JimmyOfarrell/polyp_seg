@@ -142,11 +142,10 @@ class HarDNet(nn.Module):
             max_pool = False
             drop_rate = 0.05
 
-        print(f"\n{'='*60}")
+        print('\n'+'='*60)
         print(f"[BACKBONE] Initializing HarDNet-{arch}")
         print(f"[BACKBONE] Pretrained: {pretrained} | Depthwise: {depth_wise}")
         print(f"[BACKBONE] Output channels per stage: {full_features}")
-        print(f"{'='*60}\n")
 
         blks = len(n_layers)
         self.base = nn.ModuleList([])
@@ -185,7 +184,8 @@ class HarDNet(nn.Module):
         self.base            = self.base[:self.truncate_at] 
 
         n_params = sum(p.numel() for p in self.parameters())
-        print("[INFO] HarDNet Architecture Summary")
+        print('\n'+'='*60)
+        print("[BACKBONE] HarDNet Architecture Summary")
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
         print("-" * 58)
@@ -195,6 +195,7 @@ class HarDNet(nn.Module):
         print(f"{'Base layers':<22} | {len(self.base)}")
         print(f"{'Total parameters':<22} | {n_params:,} ({n_params / 1e6:.2f}M)")
         print("-" * 58)
+        print('='*60)
 
     def _load_pretrained(self, arch, depth_wise, weight_path):
         postfix = 'DS' if depth_wise else ''
@@ -216,15 +217,13 @@ class HarDNet(nn.Module):
         if key not in self._PRETRAINED_URLS:
             raise ValueError(f"No pretrained weights for arch={arch}, depth_wise={depth_wise}. Available: {list(self._PRETRAINED_URLS.keys())}. Provide local file via weight_path or set pretrained=False.")
         checkpoint = self._PRETRAINED_URLS[key]
-        print(f"[INFO] Downloading ImageNet weights: {checkpoint}")
-        try:
-            state = torch.hub.load_state_dict_from_url(
-                checkpoint, progress=True, map_location='cpu'
-            )
+        print(f"[BACKBONE] Downloading ImageNet weights: {checkpoint}")
+        try:state = torch.hub.load_state_dict_from_url(checkpoint, progress=True, map_location='cpu')
         except Exception as e:
             raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_path.") from e
         self.load_state_dict(state)
-        print(f"[INFO] Loaded HarDNet-{arch}{postfix} from URL.") 
+        print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.")
+        print('='*60)
 
     def forward(self, x):
         x2 = x4 = x8 = x16 = x32 = None

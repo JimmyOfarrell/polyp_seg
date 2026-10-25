@@ -27,6 +27,7 @@ def get_model(args):
     except Exception as e: raise RuntimeError(f"Failed to build ModelEmb (model_emb={args['model_emb']}): {e}") from e
 
     if args.get('ckpt_path') is not None:
+        print('\n'+'='*60)
         ckpt_path = args['ckpt_path']
 
         try: ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
@@ -47,17 +48,16 @@ def get_model(args):
         try: result = model.load_state_dict(state_dict, strict=strict)
         except RuntimeError as e: raise RuntimeError(f"Failed to load state_dict into model: {e}") from e
 
-        print(f"[get_model] Checkpoint loaded from '{ckpt_path}' "
-              f"(strict={strict})")
+        print(f"[get_model] Checkpoint loaded from '{ckpt_path}' (strict={strict})")
 
         if not strict:
             if result.missing_keys: print(f"[get_model]   Missing keys   : {len(result.missing_keys)}")
             if result.unexpected_keys: print(f"[get_model]   Unexpected keys: {len(result.unexpected_keys)}")
-   
+    print('='*60)
     return model
 
 def get_standard_model(args, img_ch=3):
-    if args['net']=='HardNetSegmentor' and args['task'] in ['pancreas', 'spleen', 'prostate', 'mslesseg']:
+    if args['net']=='HardNetSegmentor':
         model = HardNetSegmentor(args, segmentor=args['net_segmentor']).to(args['device'])
     else:
         raise ValueError('Model not implemented')
