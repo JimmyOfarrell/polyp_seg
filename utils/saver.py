@@ -101,16 +101,66 @@ class Saver:
         print('='*60)
         return out_path         
 
-    def save_model(self, net, name: str, step: int):
-        """
-        Save model parameters in the checkpoint directory.
-        """
-        # Get state dict
-        state_dict = net.state_dict()
-        # Save
-        torch.save(state_dict, str(self.ckpt_path) +
-                   '/' + f'{name}_{step:05d}.pth')        
+    def wb_mask(self, img, mask, gt):
+        pred_shifted = mask.astype(np.uint8) + 2
+        return wandb.Image(
+            img,
+            masks={
+                "ground_truth": {
+                    "mask_data": gt.astype(np.uint8),
+                    "class_labels": {0: "background", 1: "polyp"},
+                },
+                "prediction": {
+                    "mask_data": pred_shifted,
+                    "class_labels": {2: "background", 3: "polyp"},
+                },
+            },
+        )
     
+    @torch.no_grad()
+    def log_samples_2d(self, images, masks, ground_truth, step, name, phase):
+        if not self.wandb_enabled: return
+
+        if masks.dim() == 4:
+            if masks.shape[1] != 1:
+                raise ValueError(f"log_samples_2d expects masks with 1 channel, got shape {tuple(masks.shape)}. Extract polyp channel first.")
+            masks = masks.squeeze(1)
+        if ground_truth.dim() == 4:
+            if ground_truth.shape[1] != 1:
+                raise ValueError(
+                    f"log_samples_2d expects ground_truth with 1 channel, got shape {tuple(ground_truth.shape)}.")
+            ground_truth = ground_truth.squeeze(1)
+
+        imgs_hwc = images.detach().float().permute(0, 2, 3, 1).cpu().numpy()
+        masks_np = masks.detach().cpu().numpy().round().astype(np.uint8)
+        gt_np    = ground_truth.detach().cpu().numpy().round().astype(np.uint8)
+
+        imagenet_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        imagenet_std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        imgs_hwc = imgs_hwc * imagenet_std + imagenet_mean
+        imgs_hwc = np.clip(imgs_hwc, 0.0, 1.0)
+
+        B = images.shape[0]
+        for b in range(B):
+            wandb_img = self.wb_mask(imgs_hwc[b], masks_np[b], gt_np[b])
+            wandb.log({f"Segmentation/{phase}/{name}/sample_{b}": wandb_img}, step=step)
+
+    def log_loss(self, name, value, iter_n):
+            self.writer.add_scalar(name, value, iter_n)
+            if self.wandb_enabled:
+                try: wandb.log({name: value, "EPOCH": iter_n})
+                except Exception as e: print(f"[WARN] wandb.log failed for '{name}': {type(e).__name__}: {e}")
+            with open(self.csv_file, 'a', encoding='UTF8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
+
+    def save_model(self, net, name, step, fixed_name = False):
+        filename = f'{name}.pth' if fixed_name else f'{name}_{step:05d}.pth'
+        path = os.path.join(str(self.ckpt_path), filename)
+        torch.save(net.state_dict(), path)
+        print(f"[SAVER] Checkpoint saved: {path}")
+        return path        
+    
+
+
     def save_data(self,data,name:str, subfolder:str = ''):
         ''' Save generic data in experiment folder '''
         os.makedirs(os.path.join(self.path, subfolder), exist_ok=True)
@@ -139,15 +189,6 @@ class Saver:
         self.writer.close()
         self.csv_file.close()
 
-    def log_loss(self, name: str, value: float, iter_n: int):
-        '''
-        Log loss to TB and comet_ml and csv
-        '''
-        self.writer.add_scalar(name, value, iter_n)
-        wandb.log({name: value, "EPOCH": iter_n})
-        with open(self.csv_file, 'a', encoding='UTF8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([name, iter_n, value])
 
 
     def log_images(self, title: str, images_vector: torch.Tensor):

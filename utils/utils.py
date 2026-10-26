@@ -54,14 +54,31 @@ def set_seed(seed, strict=True):
         print(f"[set_seed] Fast non-deterministic mode (seed={seed}).")
     print('='*60)           
 
+def get_input_dict(imgs, original_sz, img_sz, point_coords=None, point_labels=None, boxes=None, mask_inputs=None):
+    batched_input = []
+    for i, img in enumerate(imgs):
+        input_size    = tuple(int(x) for x in img_sz[i].squeeze().tolist())
+        original_size = tuple(int(x) for x in original_sz[i].squeeze().tolist())
+        single_input = {'image': img, 'original_size': original_size, 'image_size': input_size}
 
-def norm_batch(x):
-    bs = x.shape[0]
-    Isize = x.shape[-1]
-    min_value = x.view(bs, -1).min(dim=1)[0].repeat(1, 1, 1, 1).permute(3, 2, 1, 0).repeat(1, 1, Isize, Isize)
-    max_value = x.view(bs, -1).max(dim=1)[0].repeat(1, 1, 1, 1).permute(3, 2, 1, 0).repeat(1, 1, Isize, Isize)
-    x = (x - min_value) / (max_value - min_value + 1e-6)
-    return x
+        if point_coords is not None: single_input['point_coords'] = point_coords
+        if point_labels is not None: single_input['point_labels'] = point_labels
+        if boxes is not None: single_input['boxes'] = boxes
+        if mask_inputs is not None: single_input['mask_inputs'] = mask_inputs
+
+        batched_input.append(single_input)
+
+    return batched_input
+
+def norm_batch(x, mode='minmax'):
+    if mode == 'minmax':
+        B = x.shape[0]
+        flat = x.view(B, -1)
+        min_v = flat.min(dim=1)[0].view(B, 1, 1, 1)
+        max_v = flat.max(dim=1)[0].view(B, 1, 1, 1)
+        return (x - min_v) / (max_v - min_v + 1e-6)
+    elif mode == 'sigmoid': return torch.sigmoid(x)
+    else: raise ValueError(f"Unsupported mode '{mode}'. Choose from: 'minmax', 'sigmoid'.")
 
 
 def Dice_loss(y_true, y_pred, smooth=1):
@@ -102,28 +119,6 @@ def gen_step(optimizer, gts, masks, criterion, accumulation_steps, step):
         optimizer.step()
         optimizer.zero_grad()
     return loss.item()
-
-
-def get_input_dict(imgs, original_sz, img_sz, point_coords=None, point_labels=None, boxes=None, mask_inputs=None):
-    batched_input = []
-    for i, img in enumerate(imgs):
-        input_size = tuple([int(x) for x in img_sz[i].squeeze().tolist()])
-        original_size = tuple([int(x) for x in original_sz[i].squeeze().tolist()])
-        singel_input = {
-            'image': img,
-            'original_size': original_size,
-            'image_size': input_size
-        }
-        if point_coords is not None:
-            singel_input['point_coords'] = point_coords
-        if point_labels is not None:
-            singel_input['point_labels'] = point_labels
-        if boxes is not None:
-            singel_input['boxes'] = boxes
-        if mask_inputs is not None:
-            singel_input['mask_inputs'] = mask_inputs
-        batched_input.append(singel_input)
-    return batched_input
 
 def get_input_dict_OLD(imgs, original_sz, img_sz):
     batched_input = []

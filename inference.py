@@ -7,102 +7,104 @@ from monai.metrics import DiceMetric, MeanIoU
 from monai.transforms import AsDiscrete, Activations
 from utils.model_utils import sam_call
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
-def inference_ds_monai(ds, model, sam, transform, epoch, args, saver):
-    print('Inference started...')
-    pbar = tqdm(ds)
+@torch.no_grad()
+def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
+    print('\n' + '=' * 60)
+    print(f"[INFERENCE] Validation | Epoch {epoch}")
+    print('=' * 60)
+
+    pbar = tqdm(val_dataloader, desc=f"Val E{epoch}")
+
     model.eval()
-    iou_list = []
-    dice_list_true = []
-    dice_list_false = []
-    loss_list = []
-    Idim = int(args['Idim'])
-    diceMetric_true = DiceMetric(include_background=True, reduction='mean')
-    diceMetric_false = DiceMetric(include_background=False, reduction='mean')
-    iouMetric = MeanIoU(include_background=args['include_background'], reduction='mean')
-    post_trans = AsDiscrete(threshold=args['theashold_discretize'])
-    sigmoid = Activations(sigmoid=True)
+    if sam is not None: sam.eval()
 
-    #post-transformation of labels
-    one_hot = AsDiscrete(to_onehot=2, dim=1)
+    threshold  = args.get('theashold_discretize', 0.5)
+    include_bg = args.get('include_background', False)
+    use_std_net = args.get('use_standard_net', False)
+    net_name = args.get('net', 'HardNetSegmentor')
+    Idim = int(args.get('Idim', 512))
+    norm_mode = args.get('norm_mode', 'minmax')
+    image_key = args.get('image_key', 'image')
+    mask_key = args.get('mask_key', 'mask')
+    use_amp = args.get('use_cuda_amp', False) and torch.cuda.is_available()
+
+    one_hot     = AsDiscrete(to_onehot=2, dim=1)     
+    post_trans  = AsDiscrete(threshold=threshold)         
+    sigmoid     = Activations(sigmoid=True)
+
+    diceMetric_true  = DiceMetric(include_background=True,  reduction='mean')
+    diceMetric_false = DiceMetric(include_background=False, reduction='mean')
+    iouMetric = MeanIoU(include_background=include_bg, reduction='mean')
     
-    apply_sigm = True if (getattr(model, "is_segmentor", False) or args['net']=='Unet') and args['use_standard_net'] else False
-    if args['criterion'] == 'dice':
-        criterion = DiceLoss(include_background=args['include_background'], sigmoid=apply_sigm)
-    elif args['criterion'] == 'dice_ce':
-        criterion = DiceCELoss(include_background=args['include_background'], sigmoid=apply_sigm)
-    else:
-        raise ValueError('Criterion not recognized')
+    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_std_net)
+
+    criterion_name = args.get('criterion', 'dice_ce')
+    if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
+    elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
+    else: raise ValueError(f"Unsupported criterion '{criterion_name}'.")
+
+    if epoch == 0: print(f"[INFERENCE] Config | net={net_name} | apply_sigm={apply_sigm} | threshold={threshold} | include_bg={include_bg}")
+
+    iou_list, dice_list_true, dice_list_false, loss_list = [], [], [], []
     
     for ix,  sample in enumerate(pbar):
-        assert len(sample[args['image_key']]) == 1
-        imgs = sample[args['image_key']]
-        gts = sample[args['mask_key']]
-        original_sz_batch = torch.tensor(np.array([sample[args['image_key']][i].meta['spatial_shape'][:2] for i in range(len(sample[args['image_key']]))]))
-        img_sz =torch.tensor(imgs.shape[2:]).repeat(len(sample[args['image_key']]), 1)
-        orig_imgs = imgs.to(args['device'])
-        gts = gts.to(args['device'])
+        imgs = sample[image_key]
+        gts  = sample[mask_key]
+        batch_size = imgs.shape[0]
+        if batch_size != 1: raise ValueError(f"Val batch_size must be 1, got {imgs.shape[0]}. Check val_dataloader.")
+        original_sz_batch = sample['original_shape']
+        img_sz = torch.tensor(imgs.shape[2:]).repeat(batch_size, 1)
+        orig_imgs = imgs.to(args['device'], non_blocking=True)
+        gts       = gts.to(args['device'], non_blocking=True)
 
-        with autocast(enabled=args['use_cuda_amp']):
-            for idx in range(orig_imgs.shape[2]):
-                slice_block = slice = orig_imgs[..., idx, :, :].to(args['device'])
-                slice_small = F.interpolate(slice_block, size=(Idim, Idim), mode='bilinear', align_corners=False)
-                with torch.no_grad():
-                    if sam is not None:
-                        dense_embeddings = model(slice_small)
-                        batched_input = get_input_dict(slice, original_sz_batch, img_sz)
-                        pred = norm_batch(sam_call(batched_input, sam, dense_embeddings, args))
-                    else:
-                        pred = model(slice_block)
-                    
-                if idx == 0:
-                    depth = orig_imgs.shape[2]
-                    masks = torch.zeros((pred.shape[0], pred.shape[1], depth, pred.shape[2], pred.shape[3]), device=args['device'])
-                    gts_resized = torch.zeros((masks.shape[0], 1, depth, masks.shape[3], masks.shape[4]), device=args['device'])
-                    imgs_resized = torch.zeros((masks.shape[0], 1, depth, masks.shape[3], masks.shape[4]), device=args['device'])
+        with autocast('cuda', enabled=use_amp):
+            if sam is not None:
+                orig_imgs_small = F.interpolate(orig_imgs, size=(Idim, Idim), mode='bilinear', align_corners=False)
+                dense_embeddings = model(orig_imgs_small)
+                batched_input = get_input_dict(orig_imgs, original_sz_batch, img_sz)
+                masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
+            else: masks = model(orig_imgs)
+            size = masks.shape[2:]
+            gts_resized = F.interpolate(gts, size=size, mode='nearest')
 
-                
-                masks[:,:, idx] = pred
-                gts_resized[:,:, idx] = F.interpolate(gts[:,:, idx], size=pred.shape[2:], mode='bilinear', align_corners=True)
-                imgs_resized[:,:, idx] = F.interpolate(slice, size=pred.shape[2:], mode='bilinear', align_corners=True)
-
-            onehot_gts=one_hot(post_trans(gts_resized))
-            if masks.shape[1] == 1:
-                onehot_masks = one_hot(post_trans(masks))
+            onehot_gts = one_hot(post_trans(gts_resized))
+            if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
             elif masks.shape[1] == 2:
-                if apply_sigm:
-                    onehot_masks = post_trans(sigmoid(masks))
-                else:
-                    onehot_masks = post_trans(masks)
+                probs = sigmoid(masks) if apply_sigm else masks
+                pred_polyp = post_trans(probs[:, 1:2])
+                onehot_masks = torch.cat([1.0 - pred_polyp, pred_polyp], dim=1)
+            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
+
             
-            if args['save_val_images'] and ix<5 and epoch % 5 == 0:
-                saver.log_slices(imgs_resized.movedim(2, -1), onehot_masks[:, 1, ...].unsqueeze(1).detach().movedim(2, -1), gts_resized.detach().movedim(2, -1), epoch, ix, 'val')
+            if (getattr(saver, 'wandb_enabled', False)) and args.get('save_val_images', False) and ix < 5 and epoch % 5 == 0:
+                imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
+                pred_2d = onehot_masks[:, 1].detach()
+                gt_2d   = gts_resized.squeeze(1).detach()
+                saver.log_samples_2d(imgs_resized.detach(), pred_2d, gt_2d, step=epoch, name=f"sample{ix}", phase='val')
                 
             diceMetric_true(onehot_masks, onehot_gts)
             dice_true = diceMetric_true.aggregate().item()
+
             diceMetric_false(onehot_masks, onehot_gts)
             dice_false = diceMetric_false.aggregate().item()
+
             iouMetric(onehot_masks, onehot_gts)
             iou = iouMetric.aggregate().item()
+
             iou_list.append(iou)
             dice_list_true.append(dice_true)
             dice_list_false.append(dice_false)
             
             
-            if masks.shape[1] == 1:
-                loss=criterion(masks, gts_resized)
-            elif masks.shape[1] == 2:
-                loss=criterion(masks, onehot_gts)
+            if masks.shape[1] == 1: loss=criterion(masks, gts_resized)
+            elif masks.shape[1] == 2: loss=criterion(masks, onehot_gts)
+            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
+
             loss_list.append(loss.item())
             
-        pbar.set_description(
-            '(Inference | {task}) Epoch {epoch} :: Dice True {dice_true:.4f} :: Dice False {dice_false:.4f} :: IoU {iou:.4f}'.format(
-                task=args['task'],
-                epoch=epoch,
-                dice_true=np.mean(dice_list_true),
-                dice_false=np.mean(dice_list_false),
-                iou=np.mean(iou_list)))
+        pbar.set_description(f'(val | polyp) epoch {epoch} :: DiceT {np.mean(dice_list_true):.4f} :: DiceF {np.mean(dice_list_false):.4f} :: IoU {np.mean(iou_list):.4f}')
         
         iouMetric.reset()
         diceMetric_true.reset()

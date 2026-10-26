@@ -1,6 +1,7 @@
 import torch
 import os
 import torch.optim as optim
+import wandb
 import argparse
 import sys
 import shlex
@@ -8,6 +9,9 @@ from segment_anything import sam_model_registry
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.model_utils import get_model, get_standard_model
+from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
+from train import train_single_epoch
+from inference import inference_dataloader
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -193,17 +197,118 @@ def main(args=None, sam_args=None, saver=None):
     print(f"{'Weight decay':<22} | {wd}")
     if args['optim'] == 'SGD':
         print(f"{'Momentum':<22} | {momentum}")
+        print(f"{'Nesterov':<22} | {optimizer.param_groups[0].get('nesterov', False)}")
+    elif args['optim'] in ('Adam', 'AdamW'):
+            betas = optimizer.param_groups[0]['betas']
+            print(f"{'Betas':<22} | {betas}")
+            print(f"{'Eps':<22} | {optimizer.param_groups[0]['eps']}")    
     print(f"{'Param groups':<22} | {n_groups}")
     print(f"{'Total opt. params':<22} | {n_opt:,} ({n_opt/1e6:.2f}M)")
-    print(f"{'Optimizer state':<22} | {optimizer.state_dict()['param_groups'][0].get('betas', 'momentum' if args['optim']=='SGD' else 'N/A')}")
     print('='*60 + '\n')
 
+    print('\n' + '='*60)
+    if args['use_scheduler']:
+        steps_per_epoch = len(train_dataloader)
+        scheduler_type = args['scheduler']
+        gamma = float(args['scheduler_gamma'])
+        num_epochs = int(args['epochs'])
+        total_steps = steps_per_epoch * num_epochs
+        print(f"[SCHED] steps_per_epoch = {steps_per_epoch}")
+        if scheduler_type == 'StepLR':
+            step_size = steps_per_epoch * args['scheduler_step']
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+            print(f"[SCHED] StepLR | step_size={step_size} (={args['scheduler_step']} epochs) | gamma={gamma}")
+        elif scheduler_type == 'MultiStepLR':
+            milestones = [int(total_steps * 0.3), int(total_steps * 0.6), int(total_steps * 0.9)]
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+            print(f"[SCHED] MultiStepLR | milestones={milestones} (steps) ≈ epochs {[round(m/steps_per_epoch,1) for m in milestones]}")
+        elif scheduler_type == 'ExponentialLR':
+            print(f"[WARN] ExponentialLR decay per batch (gamma={args['scheduler_gamma']}) — likely too aggressive")
+            scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
+        elif scheduler_type == 'ReduceLROnPlateau':
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=gamma, patience=args['scheduler_patience'])
+            print(f"[SCHED] ReduceLROnPlateau | factor={gamma} | patience={args['scheduler_patience']}")
+        elif scheduler_type == 'CosineAnnealingLR':
+            T_max = int(args['schedCos_Tmax'])
+            if T_max < steps_per_epoch:
+                T_max_steps = steps_per_epoch * T_max
+                print(f"[SCHED] CosineAnnealingLR: interpreting T_max={T_max} as epochs → {T_max_steps} steps")
+            else: T_max_steps = T_max    
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max_steps, eta_min=args['schedCos_eta_min'], last_epoch=args['schedCos_last_epoch']) 
+            print(f"[SCHED] CosineAnnealingLR | T_max={T_max_steps} | eta_min={args['schedCos_eta_min']}")           
+        elif scheduler_type == 'WarmupCosineSchedule':
+            warmup_epochs = args['warmup_epochs']
+            warmup_steps = steps_per_epoch * warmup_epochs
+            scheduler = WarmupCosineSchedule(optimizer, warmup_steps=warmup_steps, t_total=total_steps, cycles=args['warmup_cycles'], last_epoch=args['schedWarmupCos_last_epoch'])
+            print(f"[SCHED] WarmupCosineSchedule | warmup={warmup_epochs} epochs ({warmup_steps} steps) | t_total={total_steps} steps | cycles={args['warmup_cycles']}")
+        elif scheduler_type == 'WarmupLinearSchedule':
+            warmup_steps = steps_per_epoch * args['warmup_epochs']
+            scheduler = WarmupLinearSchedule(optimizer, warmup_steps=warmup_steps, t_total=total_steps)
+            print(f"[SCHED] WarmupLinearSchedule | warmup={warmup_steps} steps | t_total={total_steps} steps")
+        else: raise ValueError(f"Unsupported scheduler '{scheduler_type}'")
+    else:
+        scheduler = None
+        print("[SCHED] No scheduler (constant LR)")
+    print('='*60 + '\n')
 
-        
+    if args.get('wandb_watch', False):
+        if getattr(saver, 'wandb_enabled', False):
+            try:
+                wandb.watch(model, log='all', log_freq=int(args.get('wandb_watch_freq', 10)), log_graph=True)
+                print(f"[MAIN] WandB watch enabled | log=all | freq={args.get('wandb_watch_freq', 10)}")
+            except Exception as e:
+                print(f"[WARN] wandb.watch failed: {type(e).__name__}: {e}")        
+        else: print("[MAIN] --wandb_watch requested but W&B disabled — skipping.")
 
-    input('STOP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    best = -1.0
+    path_best = os.path.join(saver.path, 'best.csv')
+    metric_name = args.get('best_metric', 'dice_f')
+    f_best = open(path_best, 'w', encoding='utf-8', newline='')
+    f_best.write(f'epoch,{metric_name}\n')                        
+    f_best.flush()
+    print(f"[MAIN] Tracking best model by '{metric_name}' in: {path_best}")
 
+    cuda_available = torch.cuda.is_available()
+    device_is_cuda = getattr(args['device'], 'type', 'cpu') == 'cuda'
+    use_amp = args.get('use_cuda_amp', False) is True and cuda_available and device_is_cuda
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+    print(f"[MAIN] AMP enabled: {use_amp} (requested={args.get('use_cuda_amp', False)}, cuda_available={cuda_available}, device={args['device']})")
 
+    num_epochs = int(args['epochs'])
+    for epoch in range(num_epochs):
+        avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler)
+        saver.log_loss('train_loss', avg_loss, epoch)
+        saver.log_loss('train_dice', avg_dice, epoch)
+        saver.log_loss('train_iou', avg_iou, epoch)
+
+        print(f"[Epoch {epoch}] train_loss={avg_loss:.4f} | train_dice={avg_dice:.4f} | train_iou={avg_iou:.4f}")
+
+        with torch.no_grad():
+            dice_true, dice_false, iou_val, val_loss = inference_dataloader(val_dataloader, model, sam, epoch, args, saver)
+            saver.log_loss('val_loss', val_loss, epoch)
+            saver.log_loss('IoU', iou_val, epoch)
+            saver.log_loss('Dice/include_true', dice_true, epoch)
+            saver.log_loss('Dice/include_false', dice_false, epoch)
+
+            best_metric_name = args.get('best_metric', 'dice_f')
+
+            if best_metric_name == 'dice_f': metric = dice_false
+            elif best_metric_name == 'dice_t': metric = dice_true
+            elif best_metric_name == 'IoU': metric = iou_val
+            else: raise ValueError(f"Unsupported best_metric '{best_metric_name}'. Choose from: 'dice_f', 'dice_t', 'IoU'.")
+                    
+            if metric > best:
+                torch.save(model.state_dict(), args['best_ckpt_path'])
+                best = metric
+                print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
+                f_best.write(f'{epoch},{best}\n')
+                f_best.flush()
+            
+        if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
+            
+    f_best.close()
+    print(f"[MAIN] ✓ Training complete. Best metric: {best:.4f}")
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="""
 ============================================================
@@ -257,7 +362,30 @@ For usage examples, see README.md
     parser.add_argument('-lr', '--learning_rate', default=0.01, help='Learning rate')
     parser.add_argument('-WD', '--WD', default=1e-4, help='Weight decay')
     parser.add_argument('--optim', type=str, default='Adam', choices=['Adam', 'SGD', 'AdamW'], help='Optimizer')
-    parser.add_argument('--momentum', type=float, default=0, help='Momentum (only used with SGD)')
+    parser.add_argument('--momentum', type=float, default=0.9, help='Momentum (only used with SGD)')
+    parser.add_argument('--use_scheduler', type=str2bool, default=False, help='Enable LR scheduler')
+    parser.add_argument('--scheduler', type=str, default='StepLR', choices=['StepLR', 'MultiStepLR', 'ExponentialLR', 'ReduceLROnPlateau', 'CosineAnnealingLR', 'WarmupCosineSchedule', 'WarmupLinearSchedule'], help='Scheduler type')
+    parser.add_argument('--scheduler_step', type=int, default=100, help='Scheduler step for StepLR, and first step of MultiStepLR')
+    parser.add_argument('--scheduler_gamma', type=float, default=0.1, help='Gamma (LR decay factor)')
+    parser.add_argument('-epochs', '--epochs', type=int, default=200, help='Number of training epochs')
+    parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for ReduceLROnPlateau')
+    parser.add_argument('--schedCos_Tmax', type=int, default=10, help='T_max for CosineAnnealingLR')
+    parser.add_argument('--schedCos_eta_min', type=float, default=0.0001, help='eta_min for CosineAnnealingLR')
+    parser.add_argument('--schedCos_last_epoch', type=int, default=-1, help='last_epoch for CosineAnnealingLR')
+    parser.add_argument('--warmup_epochs', type=int, default=5, help='Warmup epochs')
+    parser.add_argument('--warmup_cycles', type=float, default=0.5, help='Warmup cycles')
+    parser.add_argument('--schedWarmupCos_last_epoch', type=int, default=-1, help='WarmupCosineSchedule last_epoch (use only if you are resuming a training)')
+    parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Enable WandB watch')
+    parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
+    parser.add_argument('--best_metric', type=str, default='dice_f', choices=['dice_f', 'dice_t', 'IoU'], help='Best metric')
+    parser.add_argument('--theashold_discretize', type=float, default=0.5, help='Threshold for binarization')
+    parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
+    parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
+    parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
+    parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save training images to WandB')
+    parser.add_argument('--acc_steps', type=int, default=2, help='Gradient accumulation steps')
+    parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save validation images to WandB')
+    parser.add_argument('--save_every', type=int, default=10, help='Save net_last checkpoint every N epochs (also saves at last epoch)')
     args = vars(parser.parse_args())
     print(parser.description)
 
@@ -277,6 +405,7 @@ For usage examples, see README.md
     saver.log_hparams(args)
 
     if args['use_sam']:
+        print('\n' + '='*60)
         sam_ckpt = os.path.join(PROJECT_DIR, 'cp', f"{args['sam_ckpt']}.pth")
         if not os.path.exists(sam_ckpt): raise FileNotFoundError(f"SAM checkpoint not found: {sam_ckpt}\n Please download {args['sam_ckpt']}.pth into the cp/ folder.")
         sam_args = {
@@ -295,9 +424,11 @@ For usage examples, see README.md
             'gpu_id': args['device_id']}
         print(f"[MAIN] SAM checkpoint path: {sam_ckpt}")
         print(f"[MAIN] SAM Model type : {args['sam_version']}")
+        print('='*60)
     else:
+        print('\n' + '='*60)
         sam_args = None
         print("[MAIN] SAM is disabled.")
-    print('='*60)
+        print('='*60)
 
     main(args=args, sam_args=sam_args, saver=saver)

@@ -1,141 +1,128 @@
 import numpy as np
 from tqdm import tqdm
-import torch.nn as nn
 import torch
-from utils.utils import norm_batch, gen_step, get_input_dict
+from utils.utils import norm_batch, get_input_dict
 from monai.losses import DiceLoss, DiceCELoss
 from monai.metrics import DiceMetric, MeanIoU
 from monai.transforms import AsDiscrete, Activations
 from utils.model_utils import sam_call
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
+def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler=None, scaler=None):
+    model.train()
+    if sam is not None: sam.eval()
 
-def train_single_epoch(ds, model, sam, optimizer, transform, epoch, args):
-    loss_list = []
-    pbar = tqdm(ds)
-    criterion = nn.BCELoss()
-    Idim = int(args['Idim'])
-    optimizer.zero_grad()
-    for ix, (imgs, gts, original_sz, img_sz) in enumerate(pbar):
-        orig_imgs = imgs.to(sam.device)
-        gts = gts.to(sam.device)
-        orig_imgs_small = F.interpolate(orig_imgs, (Idim, Idim), mode='bilinear', align_corners=True)
-        dense_embeddings = model(orig_imgs_small)
-        batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
-        masks = norm_batch(sam_call(batched_input, sam, dense_embeddings))
-        loss = gen_step(optimizer, gts, masks, criterion, accumulation_steps=4, step=ix)
-        loss_list.append(loss)
-        pbar.set_description(
-            '(train | {}) epoch {epoch} ::'
-            ' loss {loss:.4f}'.format(
-                'Medical',
-                epoch=epoch,
-                loss=np.mean(loss_list)
-            ))
-    return np.mean(loss_list)
+    threshold = args.get('theashold_discretize', 0.5)
+    include_bg = args.get('include_background', False)
+    net_name = args.get('net', 'HardNetSegmentor')
+    use_std_net = args.get('use_standard_net', False)
 
-def  train_single_epoch_monai(ds, model, sam, optimizer, transform, epoch, args, saver, scheduler=None, scaler=None):
-    #post-transformation of labels
-    #discretize_labels = AsDiscrete(threshold = args['theashold_discretize'])
     one_hot = AsDiscrete(to_onehot=2, dim=1)
-    post_trans = AsDiscrete(threshold=args['theashold_discretize'])
+    post_trans = AsDiscrete(threshold=threshold)
     sigmoid = Activations(sigmoid=True)
     
-    diceMetric = DiceMetric(include_background=args['include_background'], reduction='mean')
-    iouMetric = MeanIoU(include_background=args['include_background'], reduction='mean')
+    diceMetric = DiceMetric(include_background=include_bg, reduction='mean')
+    iouMetric = MeanIoU(include_background=include_bg, reduction='mean')
+
+    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_std_net)
+
+    if use_std_net:
+        finetune_bb = args.get('segmentor_finetune_backbone', False)
+        phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
+    else: phase_str = "1 (SAM-guided)"
+
+    if epoch == 0: print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | apply_sigm={apply_sigm} | threshold={threshold} | include_bg={include_bg}")
     
-    iou_list = []
-    dice_list = []
-    loss_list = []
-    pbar = tqdm(ds)
-    apply_sigm = True if (getattr(model, "is_segmentor", False) or args['net']=='Unet') and args['use_standard_net'] else False
-    if args['criterion'] == 'dice':
-        criterion = DiceLoss(include_background=args['include_background'], sigmoid=apply_sigm)
-    elif args['criterion'] == 'dice_ce':
-        criterion = DiceCELoss(include_background=args['include_background'], sigmoid=apply_sigm)
-    else:
-        raise ValueError('Criterion not recognized')
-    Idim = int(args['Idim'])
+    iou_list, dice_list, loss_list = [], [], []
+    pbar = tqdm(train_dataloader, desc=f"Train E{epoch}")
+
+    criterion_name = args.get('criterion', 'dice_ce')
+    if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
+    elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
+    else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
+    if epoch == 0: print(f"[TRAIN] Loss: {criterion_name} | include_bg={include_bg} | sigmoid={apply_sigm}")
+    
+    Idim = int(args.get('Idim', 512))
     optimizer.zero_grad()
+    use_scheduler = args.get('use_scheduler', False)
+    image_key = args.get('image_key', 'image')
+    mask_key = args.get('mask_key', 'mask')
+    total_batches = len(train_dataloader)
+    acc_steps = int(args.get('acc_steps', 4))
+    use_amp = args.get('use_cuda_amp', False) and torch.cuda.is_available()
+
     for ix,  sample in enumerate(pbar):      
+        imgs = sample[image_key]
+        gts = sample[mask_key]
+        original_sz = sample['original_shape']
+
+        batch_size = imgs.shape[0]
+        img_sz =torch.tensor(imgs.shape[2:]).repeat(batch_size, 1)
+
+        orig_imgs = imgs.to(args['device'], non_blocking=True)
+        gts = gts.to(args['device'], non_blocking=True)
         
-        if isinstance(sample, list):
-            sample = sample[0]
-        imgs = sample[args['image_key']].squeeze(-1)
-        gts = sample[args['mask_key']].squeeze(-1)#.squeeze(1)
-        original_sz = torch.tensor(np.array([sample[args['image_key']][i].meta['spatial_shape'][:2] for i in range(len(sample[args['image_key']]))]))
-        img_sz =torch.tensor(imgs.shape[2:]).repeat(len(sample[args['image_key']]), 1)
-        orig_imgs = imgs.to(args['device'])
-        gts = gts.to(args['device'])
-        
-        #orig_imgs_small = F.interpolate(orig_imgs, (Idim, Idim), mode='bilinear', align_corners=True)
-        if args['num_slices'] == 1:
-            orig_imgs_small = F.interpolate(orig_imgs, size=(Idim, Idim), mode='bilinear', align_corners=False)
-        elif args['num_slices'] > 1:
-            orig_imgs_small = F.interpolate(orig_imgs, size=(orig_imgs.shape[2], Idim, Idim), mode='trilinear', align_corners=False)
-        
-        with autocast(enabled=args['use_cuda_amp']):
+        with autocast('cuda', enabled=use_amp):
             if sam is not None:
+                orig_imgs_small = F.interpolate(orig_imgs, size=(Idim, Idim), mode='bilinear', align_corners=False)
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
-                masks = norm_batch(sam_call(batched_input, sam, dense_embeddings, args))
-            else:
-                masks = model(orig_imgs)
-            size = masks.shape[2:]
-            gts_resized = F.interpolate(gts, size=size, mode='bilinear', align_corners=False)
-            imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
+                norm_mode = args.get('norm_mode', 'minmax')
+                masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
+            else: masks = model(orig_imgs)
 
-            #one_hot_masks = one_hot(masks)
+            size = masks.shape[2:]
+            gts_resized = F.interpolate(gts, size=size, mode='nearest')
+
             onehot_gts=one_hot(post_trans(gts_resized))
-            if masks.shape[1] == 1:
-                onehot_masks = one_hot(post_trans(masks))
+
+            if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
             elif masks.shape[1] == 2:
-                if apply_sigm:
-                    onehot_masks = post_trans(sigmoid(masks))
-                else:
-                    onehot_masks = post_trans(masks)
+                probs = sigmoid(masks) if apply_sigm else masks
+                pred_polyp = post_trans(probs[:, 1:2])
+                onehot_masks = torch.cat([1.0 - pred_polyp, pred_polyp], dim=1)
+            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}. Expected 1 or 2.")    
             
-            if args['save_train_images'] and ix<10 and epoch % 5 == 0:
-                if masks.shape[1]==2:
-                    saver.log_slices(imgs_resized.unsqueeze(-1).detach(), onehot_masks[:, 1, ...].unsqueeze(1).unsqueeze(-1).detach(), gts_resized.unsqueeze(-1).detach(), epoch, ix, 'train')
-                else:
-                    saver.log_slices(imgs_resized.unsqueeze(-1).detach(), onehot_masks[:, 1, ...].unsqueeze(1).unsqueeze(-1).detach(), gts_resized.unsqueeze(-1).detach(), epoch, ix, 'train')
+            if getattr(saver, 'wandb_enabled', False) and args.get('save_train_images', False) and ix < 10 and epoch % 5 == 0:
+                imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
+                pred_2d = onehot_masks[:, 1].detach()
+                gt_2d   = gts_resized.squeeze(1).detach()
+                saver.log_samples_2d(imgs_resized.detach(), pred_2d, gt_2d, step=epoch, name=f"batch{ix}", phase='train')
+
             
             diceMetric(onehot_masks, onehot_gts)
             iouMetric(onehot_masks, onehot_gts)
             dice = diceMetric.aggregate().item()
             iou = iouMetric.aggregate().item()
+
+            if masks.shape[1] == 1: loss = criterion(masks, gts_resized)
+            elif masks.shape[1] == 2: loss = criterion(masks, onehot_gts)
+            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
             
-            if masks.shape[1] == 1:
-                loss=criterion(masks, gts_resized)
-            elif masks.shape[1] == 2:
-                loss=criterion(masks, onehot_gts)
             loss_list.append(loss.item())
             iou_list.append(iou)
             dice_list.append(dice)
-        
-        scaler.scale(loss).backward()
 
-        if (ix + 1) % args['acc_steps'] == 0:
+            accum_loss = loss / acc_steps
+        
+        scaler.scale(accum_loss).backward()
+
+        if ((ix + 1) % acc_steps == 0) or ((ix + 1) == total_batches):
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
+        
+        if use_scheduler and ix == 0: saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)    
 
-        if args['use_scheduler']:
-            if args['scheduler'] == 'ReduceLROnPlateau':
-                scheduler.step(loss)
-            else:
-                scheduler.step()
+        if use_scheduler:
+            if args.get('scheduler') == 'ReduceLROnPlateau': scheduler.step(loss.item())
+            else: scheduler.step()
             
-            saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)
-        pbar.set_description(
-            '(train | {}) epoch {epoch} ::'
-            ' loss {loss:.4f}'.format(
-                'Medical',
-                epoch=epoch,
-                loss=np.mean(loss_list)
-            ))
+        pbar.set_description(f'(train | polyp) epoch {epoch} :: loss {np.mean(loss_list):.4f} :: dice {np.mean(dice_list):.4f} :: iou {np.mean(iou_list):.4f}')
         diceMetric.reset()
         iouMetric.reset()
+
+    if use_scheduler: saver.log_loss('lr_end', optimizer.param_groups[0]['lr'], epoch)
+
     return np.mean(loss_list), np.mean(dice_list), np.mean(iou_list)

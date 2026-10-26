@@ -4,22 +4,18 @@ from models.model_emb import ModelEmb
 from models.segmentor_net import HardNetSegmentor
 from packaging import version
 
-def sam_call(batched_input, sam, dense_embeddings, args=None):
+def sam_call(batched_input, sam, dense_embeddings):
     with torch.no_grad():
-        if args is not None:
-            if args['task'] in ['mslesseg']:
-                input_images = torch.stack([x["image"] for x in batched_input], dim=0)
-        else:
-            input_images = torch.stack([sam.preprocess(x["image"]) for x in batched_input], dim=0)
+        input_images = torch.stack([x["image"] for x in batched_input], dim=0)
         image_embeddings = sam.image_encoder(input_images)
-        sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
-    low_res_masks, iou_predictions = sam.mask_decoder(
+        sparse_embeddings_empty, _ = sam.prompt_encoder(points=None, boxes=None, masks=None)
+
+    low_res_masks, _ = sam.mask_decoder(
         image_embeddings=image_embeddings,
         image_pe=sam.prompt_encoder.get_dense_pe(),
-        sparse_prompt_embeddings=sparse_embeddings_none,
+        sparse_prompt_embeddings=sparse_embeddings_empty,
         dense_prompt_embeddings=dense_embeddings,
-        multimask_output=False,
-    )
+        multimask_output=False)
     return low_res_masks
 
 def get_model(args):

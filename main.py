@@ -3,95 +3,31 @@ import torch
 import os
 from utils.saver import Saver
 import sys
-from inference import inference_ds_monai
-from train import train_single_epoch, train_single_epoch_monai
+from inference import inference_dataloader
+from train import train_single_epoch, train_single_epoch
 from utils.model_utils import get_model, get_standard_model
 from utils.dataset_utils import get_dataset
 from segment_anything.utils.transforms import ResizeLongestSide
 
 import wandb
-from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
+
 
 def main(args=None, sam_args=None, saver=None):
     
 
     
-    if args['use_scheduler']:
-        steps_per_epoch = len(ds)
-        if args['scheduler']=='StepLR':
-            step_size = steps_per_epoch * args['scheduler_step']
-            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=args['scheduler_gamma'])
-        elif args['scheduler']== 'MultiStepLR':
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80], gamma=args['scheduler_gamma'])
-        elif args['scheduler']== 'ExponentialLR':
-            scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=args['scheduler_gamma'])
-        elif args['scheduler']== 'ReduceLROnPlateau':
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args['scheduler_gamma'], patience=args['scheduler_patience'], verbose=True)
-        elif args['scheduler']== 'CosineAnnealingLR':
-            scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args['schedCos_Tmax'], eta_min=args['schedCos_eta_min'], last_epoch=args['schedCos_last_epoch'])            
-        elif args['scheduler']== 'WarmupCosineSchedule':
-            warmup_epochs = args['warmup_epochs']
-            scheduler = WarmupCosineSchedule(optimizer, warmup_steps=steps_per_epoch * warmup_epochs, t_total=steps_per_epoch * args['epoches'], cycles=args['warmup_cycles'], last_epoch=args['schedWarmupCos_last_epoch'])
-            print('Using WarmupCosineSchedule with {} warmup epochs, {} cycles, {} steps per epoch'.format(warmup_epochs, args['warmup_cycles'], steps_per_epoch))
-        elif args['scheduler']== 'WarmupLinearSchedule':
-            scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args['warmup_steps'], t_total=args['epoches'])
-    else:
-        scheduler = None
+    
+    
+    
+    
+    
 
     
-    if args['wandb_watch']:
-        wandb.watch(model, log='all', log_freq=args['wandb_watch_freq'], log_graph=True)
     
-    best = 0
-    path_best = os.path.join(saver.path,'best.csv')
-    f_best = open(path_best, 'w')
-
-    scaler = torch.cuda.amp.GradScaler(enabled=args['use_cuda_amp'])
     
-    for epoch in range(int(args['epoches'])):
-        if args['task'] in ['pancreas', 'spleen', 'prostate', 'brats', 'mslesseg']:
-            avg_loss, avg_dice, avg_iou= train_single_epoch_monai(ds, model.train(), sam.eval() if args['use_sam'] else None, optimizer, transform, epoch, args, saver, scheduler, scaler)
-        else:
-            avg_loss= train_single_epoch(ds, model.train(), sam.eval(), optimizer, transform, epoch, args)
-        saver.log_loss('train_loss', avg_loss, epoch)
-        saver.log_loss('train_dice', avg_dice, epoch)
-        saver.log_loss('train_iou', avg_iou, epoch)
-        with torch.no_grad():
-            if args['task'] in ['pancreas', 'spleen', 'prostate', 'brats', 'mslesseg']:
-                dice_true, dice_false, IoU_val, val_loss = inference_ds_monai(ds_val, model.eval(), sam, transform, epoch, args, saver)
-                saver.log_loss('val_loss', val_loss, epoch)
-                saver.log_loss('IoU', IoU_val, epoch)
-                saver.log_loss('Dice/include_true', dice_true, epoch)
-                saver.log_loss('Dice/include_false', dice_false, epoch)
-                
-            else:
-                dice, IoU_val = inference_ds(ds_val, model.eval(), sam, transform, epoch, args)
-                saver.log_loss('IoU', IoU_val, epoch)
-                saver.log_loss('Dice', dice, epoch)
-            if args['best_metric']=='dice_f':
-                metric = dice_false
-            elif args['best_metric']=='dice_t':
-                metric = dice_true
-            elif args['best_metric']=='IoU':
-                metric = IoU_val
-            else:
-                raise ValueError('Best metric not recognized')
-            if metric > best:
-                torch.save(model.state_dict(), args['path_best'])
-                best = metric
-                print('best results: ' + str(best))
-                f_best.write(str(epoch) + ',' + str(best) + '\n')
-                f_best.flush()
-        
-        if epoch % int(args['save_every']) == 0 or epoch == int(args['epoches'])-1:
-            saver.save_model(model, 'net_last', epoch)
-        
-    f_best.close()
-
 if __name__ == '__main__':
     
 
-    parser.add_argument('-epoches', '--epoches', type=int, default=5000, help='number of epoches', required=False)
     parser.add_argument('-task', '--task', default='mslesseg', help='Task type (e.g., pancreas, spleen, prostate, brats, mslesseg, tooth)', required=False)
     parser.add_argument('-rotate', '--rotate', default=22, help='image size', required=False)
     parser.add_argument('-scale1', '--scale1', default=0.75, help='image size', required=False)
@@ -102,33 +38,18 @@ if __name__ == '__main__':
     
     parser.add_argument('--data_dir', type=str, default='', help='Path to the dataset directory', required=False)
     parser.add_argument('--train_batch_size', type=int, default=8)
-    parser.add_argument('--save_every', type=int, default=10, help='Save model every n epochs')
     parser.add_argument('--spatial_crop_size', type=int, default=224, help='Spatial crop size')
     parser.add_argument('--pos_rand_crop', type=float, default=0.75, help='Positive ratio for random crop')
     parser.add_argument('--neg_rand_crop', type=float, default=0.25, help='Negative ratio for random crop')
     parser.add_argument('--axcodes', type=str, default='RAS', help='Axial codes')
     parser.add_argument('--num_slices', type=int, default=1, help='Number of slices')
-    parser.add_argument('--criterion', type=str, default='dice', choices=['dice', 'dice_ce'], help='Criterion')
-    parser.add_argument('--include_background', type=str2bool, default=False, help='Include background in loss')
     parser.add_argument('--acc_steps', type=int, default=2, help='Number of accumulation steps')
     parser.add_argument('--cache_rate', type=float, default=.7, help='Cache rate')
 
-    parser.add_argument('--use_scheduler', type=str2bool, default=False, help='If use scheduler or not')
-    parser.add_argument('--scheduler', type=str, default='StepLR', choices=['StepLR', 'MultiStepLR', 'ExponentialLR', 'ReduceLROnPlateau', 'CosineAnnealingLR', 'WarmupCosineSchedule', 'WarmupLinearSchedule'], help='Scheduler')
-    parser.add_argument('--scheduler_step', type=int, default=100, help='Scheduler step for StepLR, and first step of MultiStepLR')
-    parser.add_argument('--scheduler_gamma', type=float, default=0.1, help='Scheduler gamma')
-    parser.add_argument('--scheduler_patience', type=int, default=10, help='ReduceLROnPlateau Scheduler patience')
-    parser.add_argument('--schedCos_Tmax', type=int, default=10, help='CosineAnnealingLR Tmax')
-    parser.add_argument('--schedCos_eta_min', type=float, default=0.0001, help='CosineAnnealingLR eta_min')
-    parser.add_argument('--schedCos_last_epoch', type=int, default=-1, help='CosineAnnealingLR last_epoch')
-    parser.add_argument('--best_metric', type=str, default='IoU', help='Best metric') #until now, only IoU is implemented as best metric to save the best model
-    parser.add_argument('--warmup_epochs', type=int, default=5, help='Warmup epochs')
-    parser.add_argument('--warmup_cycles', type=float, default=0.5, help='Warmup cycles')
-    parser.add_argument('--schedWarmupCos_last_epoch', type=int, default=-1, help='WarmupCosineSchedule last_epoch (use only if you are resuming a training)')
+    
 
-    parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save images')
-    parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save images')
-    parser.add_argument('--theashold_discretize', type=float, default=0.01, help='Threshold for discretization')
+
+
 
 
     parser.add_argument('--remove_maxpool', type=str2bool, default=False, help='Remove first maxpool when ResNet is used as embedding model')
@@ -137,10 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--sam_zeroshot', type=str2bool, default=False, help='SAM zero shot')
     
     
-    
-    
-    parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Wandb watch')
-    parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
+
 
     parser.add_argument('--label_values', type=int, nargs='+', default=[1, 2, 4], help='Label values to discretize mask (primarily for the BRATS dataset; may not apply to other datasets)')
     parser.add_argument('--center_crop', type=str2bool, default=False, help='Center crop the input images')
