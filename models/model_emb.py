@@ -44,3 +44,4 @@ class ModelEmb(ModelEmb2DNet):
         z = self.backbone(img)
         dense_embeddings = self.decoder(z)
         dense_embeddings = F.interpolate(dense_embeddings, (64, 64), mode='bilinear', align_corners=False)
+        return dense_embeddings
