@@ -20,8 +20,8 @@ class Saver:
         if self.wandb_mode not in {"online", "offline", "disabled"}: raise ValueError(f"Unsupported wandb_mode: {self.wandb_mode!r}")
         os.makedirs(output_folder, exist_ok=True)
 
-        timestamp_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        self.experiment_dir = os.path.join(output_folder, f'{timestamp_str}_{self.experiment_name}')
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.experiment_dir = os.path.join(output_folder, f'run-{timestamp_str}-{self.experiment_name}')
         os.makedirs(self.experiment_dir, exist_ok=True)
         print(f"[SAVER] Config | experiment={self.experiment_name} | wandb_mode={self.wandb_mode} | wandb_project={self.wandb_project} | wandb_tags={self.wandb_tags}")
         print(f"[SAVER] Experiment directory created: {self.experiment_dir}")
@@ -43,8 +43,6 @@ class Saver:
         os.makedirs(self.vis_dir,  exist_ok=True)
         print(f"[SAVER] Checkpoint directory initialized: {self.ckpt_dir}")
         print(f"[SAVER] Visualization directory initialized: {self.vis_dir}")
-
-        input('stop!!!!!!!!')
         
         self.metrics_table = None
         self.columns = None
@@ -61,19 +59,16 @@ class Saver:
             if self.wandb_enabled:
                 self.wandb_run_id = wandb.run.id
                 self.wandb_run_dir = wandb.run.dir
-                self.wandb_project_url = wandb.run.get_project_url()
-                self.wandb_run_url = wandb.run.get_url()
+                self.wandb_project_url = wandb.run.project_url
+                self.wandb_run_url = wandb.run.url
 
-                print("\n" + "=" * 70)
-                print(f"{'Weights & Biases (W&B) Initialized':^70}")
-                print("=" * 70)
+                print(f"{'[SAVER] Weights & Biases (W&B) Initialized':^70}")
                 print(f"{'Project Name':<15} : {self.wandb_project}")
                 print(f"{'Run Name':<15} : {self.experiment_name}")
                 print(f"{'Run ID':<15} : {self.wandb_run_id}")
                 print(f"{'Local Dir':<15} : {self.wandb_run_dir}")
                 print(f"{'Project URL':<15} : {self.wandb_project_url}")
                 print(f"{'Run URL':<15} : {self.wandb_run_url}")
-                print("=" * 70 + "\n")
 
                 self.wandb_info = {'project_name': self.wandb_project,
                               'run_name': self.experiment_name,
