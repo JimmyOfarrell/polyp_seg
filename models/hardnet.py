@@ -96,7 +96,7 @@ class HarDNet(nn.Module):
                         (68, True):  'https://ping-chao.com/hardnet/hardnet68ds-632474d2.pth',
                         (39, True):  'https://ping-chao.com/hardnet/hardnet39ds-0e6c6fa9.pth'}
     
-    def __init__(self, depth_wise=False, arch=68, pretrained=True, weight_path=''):
+    def __init__(self, depth_wise=False, arch=68, pretrained=True, weight_dir=''):
         super().__init__()
         if arch not in (39, 68, 85): raise ValueError(f"Unsupported HarDNet arch={arch}. Choose from 39, 68, 85.")
 
@@ -142,10 +142,9 @@ class HarDNet(nn.Module):
             max_pool = False
             drop_rate = 0.05
 
-        print('\n'+'='*60)
-        print(f"[BACKBONE] Initializing HarDNet-{arch}")
+        print(f"[BACKBONE] Initializing HarDNet-{arch}:")
         print(f"[BACKBONE] Pretrained: {pretrained} | Depthwise: {depth_wise}")
-        print(f"[BACKBONE] Output channels per stage: {full_features}")
+        print(f"[BACKBONE] Output channels per stage: {full_features}", '\n')
 
         blks = len(n_layers)
         self.base = nn.ModuleList([])
@@ -173,9 +172,7 @@ class HarDNet(nn.Module):
         ch = ch_list[blks - 1]
         self.base.append(nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)), Flatten(), nn.Dropout(drop_rate), nn.Linear(ch, 1000)))
 
-
-        if pretrained:
-            self._load_pretrained(arch, depth_wise, weight_path)
+        if pretrained: self._load_pretrained(arch, depth_wise, weight_dir)
 
         self.features        = full_features[-1]
         self.full_features   = full_features
@@ -183,9 +180,9 @@ class HarDNet(nn.Module):
         self.truncate_at     = truncate_at
         self.base            = self.base[:self.truncate_at] 
 
-        n_params = sum(p.numel() for p in self.parameters())
+        self.num_params = sum(p.numel() for p in self.parameters())
         print('\n'+'='*60)
-        print("[BACKBONE] HarDNet Architecture Summary")
+        print("[BACKBONE] HarDNet Architecture Summary:")
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
         print("-" * 58)
@@ -193,36 +190,31 @@ class HarDNet(nn.Module):
         print(f"{'Full features':<22} | {self.full_features}")
         print(f"{'Feature indices':<22} | {self.feature_indices}")
         print(f"{'Base layers':<22} | {len(self.base)}")
-        print(f"{'Total parameters':<22} | {n_params:,} ({n_params / 1e6:.2f}M)")
-        print("-" * 58)
-        print('='*60)
+        print(f"{'Total parameters':<22} | {self.num_params:,} ({self.num_params / 1e6:.2f}M)")
+        print("-" * 58, '\n')
 
-    def _load_pretrained(self, arch, depth_wise, weight_path):
+    def _load_pretrained(self, arch, depth_wise, weight_dir):
         postfix = 'DS' if depth_wise else ''
         postfix_local = 'ds' if depth_wise else ''
 
-        if weight_path:
-            weight_file = os.path.join(weight_path, f'hardnet{arch}{postfix_local}.pth')
+        if weight_dir:
+            weight_file = os.path.join(weight_dir, f'hardnet{arch}{postfix_local}.pth')
             if os.path.isfile(weight_file):
-                print(f"[INFO] Loading local ImageNet weights: {weight_file}")
-                try:
-                    state = torch.load(weight_file, map_location='cpu', weights_only=True)
-                except TypeError:
-                    state = torch.load(weight_file, map_location='cpu')
+                print(f"[BACKBONE] Loading local ImageNet weights: {weight_file}")
+                try:state = torch.load(weight_file, map_location='cpu', weights_only=True)
+                except TypeError: state = torch.load(weight_file, map_location='cpu')
                 self.load_state_dict(state)
-                print(f"[INFO] Loaded HarDNet-{arch}{postfix} from local file.")
+                print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from local file.")
                 return
 
         key = (arch, depth_wise)
-        if key not in self._PRETRAINED_URLS:
-            raise ValueError(f"No pretrained weights for arch={arch}, depth_wise={depth_wise}. Available: {list(self._PRETRAINED_URLS.keys())}. Provide local file via weight_path or set pretrained=False.")
+        if key not in self._PRETRAINED_URLS: raise ValueError(f"No pretrained weights for arch={arch}, depth_wise={depth_wise}. Available: {list(self._PRETRAINED_URLS.keys())}. Provide local file via weight_path or set pretrained=False.")
         checkpoint = self._PRETRAINED_URLS[key]
         print(f"[BACKBONE] Downloading ImageNet weights: {checkpoint}")
         try:state = torch.hub.load_state_dict_from_url(checkpoint, progress=True, map_location='cpu')
-        except Exception as e:
-            raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_path.") from e
+        except Exception as e: raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_path.") from e
         self.load_state_dict(state)
-        print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.")
+        print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.", '\n')
         print('='*60)
 
     def forward(self, x):

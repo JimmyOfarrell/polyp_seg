@@ -213,4 +213,5 @@ class ModelEmb2DNet(nn.Module):
 
     def preprocess(self, x):
         if x.ndim != 4: raise ValueError(f"ModelEmb2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)}")
+        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} channels. Polyp pipeline requires RGB input.")
         return x

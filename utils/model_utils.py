@@ -4,35 +4,20 @@ from models.model_emb import ModelEmb
 from models.segmentor_net import HardNetSegmentor
 from packaging import version
 
-def sam_call(batched_input, sam, dense_embeddings):
-    with torch.no_grad():
-        input_images = torch.stack([x["image"] for x in batched_input], dim=0)
-        image_embeddings = sam.image_encoder(input_images)
-        sparse_embeddings_empty, _ = sam.prompt_encoder(points=None, boxes=None, masks=None)
-
-    low_res_masks, _ = sam.mask_decoder(
-        image_embeddings=image_embeddings,
-        image_pe=sam.prompt_encoder.get_dense_pe(),
-        sparse_prompt_embeddings=sparse_embeddings_empty,
-        dense_prompt_embeddings=dense_embeddings,
-        multimask_output=False)
-    return low_res_masks
-
 def get_model(args):
     if args['model_emb'] != 'HardNet': raise ValueError(f"Unsupported model_emb='{args['model_emb']}'. Only 'HardNet' is currently supported.")
     try: model = ModelEmb(args=args)
     except Exception as e: raise RuntimeError(f"Failed to build ModelEmb (model_emb={args['model_emb']}): {e}") from e
 
-    if args.get('ckpt_path') is not None:
-        print('\n'+'='*60)
-        ckpt_path = args['ckpt_path']
+    ckpt_dir = args['ckpt_path']
+    if ckpt_dir is not None:
+        ckpt_path = ckpt_dir
 
         try: ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
         except TypeError:
             try: ckpt = torch.load(ckpt_path, map_location='cpu')
             except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
-        except Exception as e:
-                raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
+        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
 
         if isinstance(ckpt, dict):
             if 'model_state_dict' in ckpt: state_dict = ckpt['model_state_dict']
@@ -50,8 +35,22 @@ def get_model(args):
         if not strict:
             if result.missing_keys: print(f"[get_model]   Missing keys   : {len(result.missing_keys)}")
             if result.unexpected_keys: print(f"[get_model]   Unexpected keys: {len(result.unexpected_keys)}")
-    print('='*60)
     return model
+
+
+def sam_call(batched_input, sam, dense_embeddings):
+    with torch.no_grad():
+        input_images = torch.stack([x["image"] for x in batched_input], dim=0)
+        image_embeddings = sam.image_encoder(input_images)
+        sparse_embeddings_empty, _ = sam.prompt_encoder(points=None, boxes=None, masks=None)
+
+    low_res_masks, _ = sam.mask_decoder(
+        image_embeddings=image_embeddings,
+        image_pe=sam.prompt_encoder.get_dense_pe(),
+        sparse_prompt_embeddings=sparse_embeddings_empty,
+        dense_prompt_embeddings=dense_embeddings,
+        multimask_output=False)
+    return low_res_masks
 
 def get_standard_model(args):
     if args['net']=='HardNetSegmentor': model = HardNetSegmentor(args, segmentor=args['net_segmentor'])

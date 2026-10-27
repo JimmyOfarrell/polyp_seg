@@ -1,10 +1,6 @@
 
 import torch.optim as optim
 import wandb
-
-
-
-from utils.dataset_utils import get_train_val_dataloaders
 from utils.model_utils import get_model, get_standard_model
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 from train import train_single_epoch
@@ -18,6 +14,7 @@ import sys
 import shlex
 from segment_anything import sam_model_registry
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
+from utils.dataset_utils import get_train_val_dataloaders
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -36,8 +33,7 @@ def main(args=None, sam_args=None, saver=None):
             print(f"[MAIN] Device         : CPU")
             print(f"[MAIN] PyTorch version: {torch.__version__}")
             if use_sam:
-                print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow!")
-                print(f"         Consider using a GPU for training.")
+                print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow! Consider using a GPU for training.")
             if use_cuda_amp:
                 print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
                 use_cuda_amp = args['use_cuda_amp'] = False
@@ -113,15 +109,11 @@ def main(args=None, sam_args=None, saver=None):
         print("[MAIN] SAM is disabled. Using standard segmentor directly.")
         print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
     print()
-    input('stop')
-
-    train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
 
     if not args['use_standard_net']:
-        print('\n'+'='*120)
-        print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning)")
+        print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning):", '\n')
         model = get_model(args)
-        print('='*120)
+        input('stop')
     else:
         print('\n'+'='*120)
         print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only)")
@@ -219,6 +211,7 @@ def main(args=None, sam_args=None, saver=None):
     print('='*60 + '\n')
 
     print('\n' + '='*60)
+    train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
     if args['use_scheduler']:
         steps_per_epoch = len(train_dataloader)
         scheduler_type = args['scheduler']

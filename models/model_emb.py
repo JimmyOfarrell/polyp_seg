@@ -1,15 +1,19 @@
-from models.hardnet import HarDNet
 from models.base import ModelEmb2DNet
+from models.hardnet import HarDNet
 from models.model_single import SmallDecoder
 import torch.nn.functional as F
 import torch.nn as nn
 
 class ModelEmb(ModelEmb2DNet):
-    def __init__(self, args, out_ch=256):
+    def __init__(self, args, backbone_weight_dir, out_ch=256):
         super().__init__(args, out=out_ch)
-        self.backbone = HarDNet(depth_wise=bool(args['depth_wise']), arch=int(args['order']), pretrained=args['pretrained'])
-        d = self.backbone.full_features
-        self.decoder = SmallDecoder(d, out=out_ch)
+        self.depth_wise = bool(args['depth_wise'])
+        self.arch = int(args['order'])
+        self.pretrained = args['pretrained']
+        self.backbone_weight_dir = backbone_weight_dir
+        self.backbone = HarDNet(depth_wise=self.depth_wise, arch=self.arch, pretrained=self.pretrained, weight_dir=self.backbone_weight_dir)
+        self.backbone_full_features = self.backbone.full_features
+        self.decoder = SmallDecoder(self.backbone_full_features, out=out_ch)
         for param in self.backbone.parameters(): param.requires_grad = True
 
         n_bb  = sum(p.numel() for p in self.backbone.parameters())
@@ -17,8 +21,7 @@ class ModelEmb(ModelEmb2DNet):
         n_tot = n_bb + n_dec
         n_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-        print('\n' + '='*60)
-        print("[MODEL-EMB] ModelEmb Architecture Summary")
+        print("[MODEL-EMB] ModelEmb Architecture Summary:")
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
         print("-" * 58)
@@ -36,8 +39,7 @@ class ModelEmb(ModelEmb2DNet):
         print("-" * 58)
         print(f"{'Input':<22} | (B, 3, H, W) — e.g. (1, 3, 1024, 1024)")
         print(f"{'Output':<22} | (B, {out_ch}, 64, 64)")
-        print(f"{'Output range':<22} | [-1, 1] (tanh)")
-        print('='*60 + '\n')
+        print(f"{'Output range':<22} | [-1, 1] (tanh)", '\n')
         
     def forward(self, img):
         img = self.preprocess(img)
