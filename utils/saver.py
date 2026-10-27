@@ -121,7 +121,7 @@ class Saver:
         try:
             with open(out_path, 'w', encoding='utf-8') as fp: json.dump(params_dict, fp, indent=2, default=str, ensure_ascii=False)
         except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
-        print('\n')       
+        print()       
 
     def wb_mask(self, img, mask, gt):
         pred_shifted = mask.astype(np.uint8) + 2

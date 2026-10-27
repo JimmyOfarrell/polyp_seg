@@ -31,6 +31,14 @@ def main(args=None, sam_args=None, saver=None):
         if not cuda_available:
             print(f"[WARNING] CUDA requested but not available. Falling back to CPU.")
             device = args['device'] = torch.device("cpu")
+            print(f"[MAIN] Device        : CPU")
+            print(f"[MAIN] PyTorch version: {torch.__version__}")
+            if use_sam:
+                print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow!")
+                print(f"         Consider using a GPU for training.")
+            if use_cuda_amp:
+                print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
+                use_cuda_amp = args['use_cuda_amp'] = False
         else:
             num_gpus = torch.cuda.device_count()
             device_id = int(args['device_id'])
@@ -78,7 +86,7 @@ def main(args=None, sam_args=None, saver=None):
         if use_cuda_amp:
             print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
             use_cuda_amp = args['use_cuda_amp'] = False
-    print('\n')
+    print()
     input('stop')
 
     if args['use_sam']:
