@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 class ModelEmb(ModelEmb2DNet):
-    def __init__(self, args, backbone_weight_dir, out_ch=256):
+    def __init__(self, args, backbone_weight_dir='', out_ch=256):
         super().__init__(args, out=out_ch)
         self.depth_wise = bool(args['depth_wise'])
         self.arch = int(args['order'])
