@@ -22,6 +22,7 @@ from utils.utils import str2bool
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main(args=None, sam_args=None, saver=None):
+    input('stop')
     print('\n'+'='*60)
     print("[MAIN] Device configuration")
     if str(args['device']).lower() == 'cuda':
@@ -410,33 +411,20 @@ For usage examples, see README.md
     args['best_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_best.pth')
     args['vis_folder'] = saver.vis_dir
     args['wandb_info'] = saver.wandb_info
-    saver.log_hparams(args)
 
     if args['use_sam']:
-        print('\n' + '='*60)
         sam_ckpt = os.path.join(PROJECT_DIR, 'cp', f"{args['sam_ckpt']}.pth")
         if not os.path.exists(sam_ckpt): raise FileNotFoundError(f"SAM checkpoint not found: {sam_ckpt}\n Please download {args['sam_ckpt']}.pth into the cp/ folder.")
-        sam_args = {
-            'sam_checkpoint': sam_ckpt,
-            'model_type': args['sam_version'],
-            'generator_args': {
-                'points_per_side': 8,
-                'pred_iou_thresh': 0.95,
-                'stability_score_thresh': 0.7,
-                'crop_n_layers': 0,
-                'crop_n_points_downscale_factor': 2,
-                'min_mask_region_area': 0,
-                'point_grids': None,
-                'box_nms_thresh': 0.7,
-            },
-            'gpu_id': args['device_id']}
+
+        sam_args = {'sam_checkpoint': sam_ckpt, 'model_type': args['sam_version']}
+        args['sam_args'] = sam_args
         print(f"[MAIN] SAM checkpoint path: {sam_ckpt}")
-        print(f"[MAIN] SAM Model type : {args['sam_version']}")
-        print('='*60)
+        print(f"[MAIN] SAM Model type : {args['sam_version']}", '\n')
     else:
-        print('\n' + '='*60)
         sam_args = None
-        print("[MAIN] SAM is disabled.")
-        print('='*60)
+        print("[MAIN] SAM is disabled.", '\n')
+
+    args['sam_args'] = sam_args
+    saver.log_hparams(args)    
 
     main(args=args, sam_args=sam_args, saver=saver)

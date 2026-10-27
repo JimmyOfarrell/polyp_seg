@@ -109,8 +109,8 @@ class Saver:
         try:
             self.writer.add_text("hparams", hparams_str, 0)
             self.writer.flush()
-        except Exception as e: print(f"[WARNING] TensorBoard hyperparameter logging failed: {type(e).__name__}: {e}")
-        input('stop')
+        except Exception as e: print(f"[WARNING] TensorBoard hyperparameter logging failed: {type(e).__name__}: {e}",)
+
         if self.wandb_enabled and self.wandb_run is not None:
             try: self.wandb_run.config.update(params_dict, allow_val_change=True)
             except Exception as e: print(f"[WARNING] WandB config update failed: {type(e).__name__}: {e}")        
@@ -120,8 +120,8 @@ class Saver:
     
         try:
             with open(out_path, 'w', encoding='utf-8') as fp: json.dump(params_dict, fp, indent=2, default=str, ensure_ascii=False)
-        except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}") 
-        input('stop')       
+        except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
+        print('\n')       
 
     def wb_mask(self, img, mask, gt):
         pred_shifted = mask.astype(np.uint8) + 2
