@@ -2,12 +2,13 @@ import argparse
 
 
 
-from torch import nn
+
 from monai.utils import set_determinism
 
 import os
 import torch.nn.functional as F
 
+import torch.nn as nn
 import random
 import numpy as np
 import torch
@@ -19,10 +20,8 @@ def disable_batchnorm_running_stats(model):
             module.track_running_stats = False
             module.running_mean = None
             module.running_var = None
-            count += 1
-    print('\n'+'='*60)        
+            count += 1       
     print(f"[disable_batchnorm_running_stats] Disabled BN running stats on {count} layer(s) in {type(model).__name__}")
-    print('='*60)
 
 def str2bool(v):
     if isinstance(v, bool): return v

@@ -1,12 +1,9 @@
-import torch
-import os
+
 import torch.optim as optim
 import wandb
 
 
 
-from segment_anything import sam_model_registry
-from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.model_utils import get_model, get_standard_model
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
@@ -14,10 +11,13 @@ from train import train_single_epoch
 from inference import inference_dataloader
 from utils.saver import Saver
 
+import torch
 import argparse
+import os
 import sys
 import shlex
-from utils.utils import str2bool
+from segment_anything import sam_model_registry
+from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -26,12 +26,14 @@ def main(args=None, sam_args=None, saver=None):
     cuda_available = torch.cuda.is_available()
     use_cuda_amp = args['use_cuda_amp']
     use_sam = args['use_sam']
+    disable_bn = args['disable_batchnorm_running_stats']
+
     print("[MAIN] Device configuration:")
     if str(device).lower() == 'cuda':
         if not cuda_available:
             print(f"[WARNING] CUDA requested but not available. Falling back to CPU.")
             device = args['device'] = torch.device("cpu")
-            print(f"[MAIN] Device        : CPU")
+            print(f"[MAIN] Device         : CPU")
             print(f"[MAIN] PyTorch version: {torch.__version__}")
             if use_sam:
                 print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow!")
@@ -53,11 +55,11 @@ def main(args=None, sam_args=None, saver=None):
             gpu_props = torch.cuda.get_device_properties(device_id)
             total_vram_gb = gpu_props.total_memory / (1024**3)
 
-            print(f"[MAIN] Device        : {args['device']}")
-            print(f"[MAIN] GPU name      : {gpu_name}")
-            print(f"[MAIN] Total VRAM    : {total_vram_gb:.2f} GB")
-            print(f"[MAIN] CUDA version  : {torch.version.cuda}")
-            print(f"[MAIN] PyTorch version: {torch.__version__}")
+            print(f"[MAIN] Device            : {args['device']}")
+            print(f"[MAIN] GPU name          : {gpu_name}")
+            print(f"[MAIN] Total VRAM        : {total_vram_gb:.2f} GB")
+            print(f"[MAIN] CUDA version      : {torch.version.cuda}")
+            print(f"[MAIN] PyTorch version   : {torch.__version__}")
 
             cc = (gpu_props.major, gpu_props.minor)
             print(f"[MAIN] Compute capability: {cc[0]}.{cc[1]}")
@@ -78,47 +80,40 @@ def main(args=None, sam_args=None, saver=None):
             except Exception: print(f"[WARNING] Could not query VRAM: {type(e).__name__}: {e}") 
     else:
         device = args['device'] = torch.device("cpu")
-        print(f"[MAIN] Device        : CPU")
+        print(f"[MAIN] Device         : CPU")
         print(f"[MAIN] PyTorch version: {torch.__version__}")
         if use_sam:
-            print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow!")
-            print(f"         Consider using a GPU for training.")
+            print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow! Consider using a GPU for training.")
         if use_cuda_amp:
             print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
             use_cuda_amp = args['use_cuda_amp'] = False
     print()
-    input('stop')
 
-    if args['use_sam']:
-        print('\n'+'='*60)
-        print("[MAIN] SAM model (Phase 1: SAM-guided prompt learning) Configuration")
+    if use_sam:
+        print("[MAIN] SAM model (Phase 1: SAM-guided prompt learning) Configuration:")
         try: sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
         except Exception as e: raise RuntimeError(f"Failed to load SAM '{sam_args['model_type']}' from '{sam_args['sam_checkpoint']}': {e}")
-        sam.to(device=args['device'])
+        sam.to(device=device)
         sam.eval()
-        for param in sam.parameters(): param.requires_grad = False
         sam_params = sum(p.numel() for p in sam.parameters())
         sam_memory_mb = sum(p.numel() * p.element_size() for p in sam.parameters()) / (1024**2)
         img_dim = sam.image_encoder.img_size
         print(f"[MAIN] SAM input resolution: {img_dim}x{img_dim}")
-        print(f"[MAIN] SAM Parameters: {sam_params:,}")
-        print(f"[MAIN] SAM Memory: {sam_memory_mb:.2f} MB")
-        print(f"[MAIN] SAM Device: {args['device']}")
-        print(f"[MAIN] SAM Mode: Frozen (eval)")
-        print('='*60)
-        if args['disable_batchnorm_running_stats']:
+        print(f"[MAIN] SAM Parameters      : {sam_params:,}")
+        print(f"[MAIN] SAM Memory          : {sam_memory_mb:.2f} MB")
+        print(f"[MAIN] SAM Device          : {args['device']}")
+        print(f"[MAIN] SAM Mode            : Frozen (eval)")
+
+        if disable_bn:
             disable_batchnorm_running_stats(sam)
-            print('\n'+'='*60)
             print("[MAIN] BatchNorm running stats disabled for SAM.")
-            print('='*60)
     else:
         sam = None
         img_dim = int(args['Idim'])
-        print('\n'+'='*60)
         print("[MAIN] SAM is disabled. Using standard segmentor directly.")
         print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
-        print('='*60)
-    
+    print()
+    input('stop')
 
     train_dataloader, val_dataloader = get_train_val_dataloaders(args, img_dim)
 
@@ -138,7 +133,7 @@ def main(args=None, sam_args=None, saver=None):
     print(f"[MAIN] Model on device: {args['device']}")
     print('='*60)
 
-    if args['disable_batchnorm_running_stats']: disable_batchnorm_running_stats(model)
+    if args['disable_batchnorm_running_stats']: disable_bn(model)
 
     if not args['use_sam']:
         if not args['segmentor_finetune_backbone']:
