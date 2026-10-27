@@ -62,13 +62,12 @@ class Saver:
                 self.wandb_project_url = wandb.run.project_url
                 self.wandb_run_url = wandb.run.url
 
-                print(f"{'[SAVER] Weights & Biases (W&B) Initialized:'}")
-                print(f"{'Project Name':<15} : {self.wandb_project}")
-                print(f"{'Run Name':<15} : {self.experiment_name}")
-                print(f"{'Run ID':<15} : {self.wandb_run_id}")
-                print(f"{'Local Dir':<15} : {self.wandb_run_dir}")
-                print(f"{'Project URL':<15} : {self.wandb_project_url}")
-                print(f"{'Run URL':<15} : {self.wandb_run_url}")
+                print(f"[SAVER] {'Project Name':<14}: {self.wandb_project}")
+                print(f"[SAVER] {'Run Name':<14}: {self.experiment_name}")
+                print(f"[SAVER] {'Run ID':<14}: {self.wandb_run_id}")
+                print(f"[SAVER] {'Local Dir':<14}: {self.wandb_run_dir}")
+                print(f"[SAVER] {'Project URL':<14}: {self.wandb_project_url}")
+                print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}")
 
                 self.wandb_info = {'project_name': self.wandb_project,
                               'run_name': self.experiment_name,
