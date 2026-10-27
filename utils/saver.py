@@ -58,15 +58,38 @@ class Saver:
             self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
             self.wandb_enabled = (self.wandb_mode != 'disabled') and (wandb.run is not None)
                 
-            if self.wandb_enabled:print(f"[SAVER] W&B initialized | run_id={self.wandb_run.id}, url={self.wandb_run.url}")
-            else: print(f"[SAVER] W&B logging inactive | mode={wandb_mode}")
+            if self.wandb_enabled:
+                self.wandb_run_id = wandb.run.id
+                self.wandb_run_dir = wandb.run.dir
+                self.wandb_project_url = wandb.run.get_project_url()
+                self.wandb_run_url = wandb.run.get_url()
+
+                print("\n" + "=" * 70)
+                print(f"{'Weights & Biases (W&B) Initialized':^70}")
+                print("=" * 70)
+                print(f"{'Project Name':<15} : {self.wandb_project}")
+                print(f"{'Run Name':<15} : {self.experiment_name}")
+                print(f"{'Run ID':<15} : {self.wandb_run_id}")
+                print(f"{'Local Dir':<15} : {self.wandb_run_dir}")
+                print(f"{'Project URL':<15} : {self.wandb_project_url}")
+                print(f"{'Run URL':<15} : {self.wandb_run_url}")
+                print("=" * 70 + "\n")
+
+                self.wandb_info = {'project_name': self.wandb_project,
+                              'run_name': self.experiment_name,
+                              'run_id': self.wandb_run_id,
+                              'local_dir': self.wandb_run_dir,
+                              'project_url': self.wandb_project_url,
+                              'run_url': self.wandb_run_url}
+
+            else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}")
         except Exception as e:
             self.wandb_enabled = False
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
             print("[SAVER] Continuing with local logging only.")
+        input('Stop!!!!!!!!!')    
         
-        print('='*60)
         
     def log_cmd(self, cmd):
         print('\n' + '='*60)
