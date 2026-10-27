@@ -22,21 +22,23 @@ from utils.utils import str2bool
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main(args=None, sam_args=None, saver=None):
-    input('stop')
-    print('\n'+'='*60)
-    print("[MAIN] Device configuration")
-    if str(args['device']).lower() == 'cuda':
-        if not torch.cuda.is_available():
+    device = args['device']
+    cuda_available = torch.cuda.is_available()
+    use_cuda_amp = args['use_cuda_amp']
+    use_sam = args['use_sam']
+    print("[MAIN] Device configuration:")
+    if str(device).lower() == 'cuda':
+        if not cuda_available:
             print(f"[WARNING] CUDA requested but not available. Falling back to CPU.")
-            args['device'] = torch.device("cpu")
+            device = args['device'] = torch.device("cpu")
         else:
             num_gpus = torch.cuda.device_count()
-            device_id = int(args.get('device_id', 0))
+            device_id = int(args['device_id'])
             if device_id >= num_gpus or device_id < 0:
                 print(f"[WARNING] device_id={device_id} is out of range (only {num_gpus} GPU(s) available). Using device 0.")
                 device_id = 0
                 args['device_id'] = 0    
-            args['device'] = torch.device(f"cuda:{device_id}")
+            device = args['device'] = torch.device(f"cuda:{device_id}")
             torch.cuda.set_device(device_id) 
 
             gpu_name = torch.cuda.get_device_name(device_id)
@@ -53,30 +55,30 @@ def main(args=None, sam_args=None, saver=None):
             print(f"[MAIN] Compute capability: {cc[0]}.{cc[1]}")
 
             if cc < (6, 0): print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 6.0. Mixed precision (AMP) may not work properly.")
-            if cc < (7, 0) and args.get('use_cuda_amp', False): print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 7.0. Tensor Cores not available; AMP will be limited.")
+            if cc < (7, 0) and use_cuda_amp: print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 7.0. Tensor Cores not available; AMP will be limited.")
 
             try:
                 free_vram, total_vram = torch.cuda.mem_get_info(device_id)
                 free_vram_gb = free_vram / (1024**3)
                 print(f"[MAIN] Free VRAM     : {free_vram_gb:.2f} GB")
             
-                if args.get('use_sam', False) and free_vram_gb < 8:
+                if use_sam and free_vram_gb < 8:
                     print(f"[WARNING] Free VRAM ({free_vram_gb:.2f} GB) may be insufficient for Phase 1 with SAM (ViT-B). Consider:")
                     print(f"         - Smaller batch size (-bs)")
                     print(f"         - Using --use_cuda_amp True")
                     print(f"         - Already using smallest SAM (vit_b); reduce batch size instead")
-            except Exception: pass 
+            except Exception: print(f"[WARNING] Could not query VRAM: {type(e).__name__}: {e}") 
     else:
-        args['device'] = torch.device("cpu")
+        device = args['device'] = torch.device("cpu")
         print(f"[MAIN] Device        : CPU")
         print(f"[MAIN] PyTorch version: {torch.__version__}")
-        if args.get('use_sam', False):
+        if use_sam:
             print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow!")
             print(f"         Consider using a GPU for training.")
-        if args.get('use_cuda_amp', False):
+        if use_cuda_amp:
             print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
-            args['use_cuda_amp'] = False
-    print('='*60)
+            use_cuda_amp = args['use_cuda_amp'] = False
+    print('\n')
 
     if args['use_sam']:
         print('\n'+'='*60)
