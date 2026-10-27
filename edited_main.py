@@ -409,6 +409,7 @@ For usage examples, see README.md
     args['last_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_last.pth')
     args['best_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_best.pth')
     args['vis_folder'] = saver.vis_dir
+    args['wandb_info'] = saver.wandb_info
     saver.log_hparams(args)
 
     if args['use_sam']:

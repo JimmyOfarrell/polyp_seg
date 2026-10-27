@@ -103,31 +103,25 @@ class Saver:
             if getattr(self, 'wandb_enabled', False) and self.wandb_run is not None: self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
         except Exception as e: print(f"[SAVER] WARNING: wandb.config.update('cmd') failed: {type(e).__name__}: {e}", '\n')
     
-
-    
     def log_hparams(self,params_dict):
-        hparams_str = json.dumps(params_dict, indent=2, default=str)
+        hparams_str = json.dumps(params_dict, indent=2, default=str, ensure_ascii=False)
             
-        print('\n'+'='*60)
-        try:self.writer.add_text("hparams", hparams_str, 0)
+        try:
+            self.writer.add_text("hparams", hparams_str, 0)
+            self.writer.flush()
         except Exception as e: print(f"[WARNING] TensorBoard hyperparameter logging failed: {type(e).__name__}: {e}")
-    
-        if self.wandb_enabled:
+        input('stop')
+        if self.wandb_enabled and self.wandb_run is not None:
             try: self.wandb_run.config.update(params_dict, allow_val_change=True)
-            except Exception as e:
-                print(f"[WARNING] WandB config update failed: {type(e).__name__}: {e}")
-                print("[WARNING] Continuing with local hyperparameter logging.")
-            else: print("[SAVER] WandB is disabled; skipping configuration update.")        
+            except Exception as e: print(f"[WARNING] WandB config update failed: {type(e).__name__}: {e}")        
     
         out_path = os.path.join(self.experiment_dir, 'hparams.json')
         print(f"[SAVER] JSON output path: {out_path}")
     
         try:
             with open(out_path, 'w', encoding='utf-8') as fp: json.dump(params_dict, fp, indent=2, default=str, ensure_ascii=False)
-        except Exception as e:print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
-    
-        print('='*60)
-        return out_path         
+        except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}") 
+        input('stop')       
 
     def wb_mask(self, img, mask, gt):
         pred_shifted = mask.astype(np.uint8) + 2
