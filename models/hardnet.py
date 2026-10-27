@@ -181,7 +181,6 @@ class HarDNet(nn.Module):
         self.base            = self.base[:self.truncate_at] 
 
         self.num_params = sum(p.numel() for p in self.parameters())
-        print('\n'+'='*60)
         print("[BACKBONE] HarDNet Architecture Summary:")
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
@@ -215,7 +214,6 @@ class HarDNet(nn.Module):
         except Exception as e: raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_path.") from e
         self.load_state_dict(state)
         print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.", '\n')
-        print('='*60)
 
     def forward(self, x):
         x2 = x4 = x8 = x16 = x32 = None

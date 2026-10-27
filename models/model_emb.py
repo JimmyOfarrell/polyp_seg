@@ -28,7 +28,7 @@ class ModelEmb(ModelEmb2DNet):
         print(f"{'Backbone':<22} | HarDNet-{int(args['order'])}")
         print(f"{'Depth-wise':<22} | {bool(args['depth_wise'])}")
         print(f"{'Pretrained':<22} | {bool(args['pretrained'])}")
-        print(f"{'Full features':<22} | {d}")
+        print(f"{'Full features':<22} | {self.backbone_full_features}")
         print(f"{'Decoder':<22} | SmallDecoder (use_tanh=True)")
         print(f"{'Output channels':<22} | {out_ch}")
         print("-" * 58)
