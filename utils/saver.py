@@ -50,8 +50,6 @@ class Saver:
         
         self.wandb_enabled = False
         self.wandb_run = None
-        self.wandb_enabled = False
-        self.wandb_run = None
         self.wandb_run_id = None
         self.wandb_run_dir = None
         self.wandb_project_url = None
@@ -61,13 +59,13 @@ class Saver:
         try:
             wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
             self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
-            self.wandb_enabled = (self.wandb_mode != 'disabled') and (self.wandb.run is not None)
+            self.wandb_enabled = (self.wandb_mode != 'disabled') and (self.wandb_run is not None)
                 
             if self.wandb_enabled:
-                self.wandb_run_id = self.wandb.run.id
-                self.wandb_run_dir = self.wandb.run.dir
-                self.wandb_project_url = self.wandb.run.project_url
-                self.wandb_run_url = self.wandb.run.url
+                self.wandb_run_id = self.wandb_run.id
+                self.wandb_run_dir = self.wandb_run.dir
+                self.wandb_project_url = self.wandb_run.project_url
+                self.wandb_run_url = self.wandb_run.url
 
                 print("[SAVER] Weights & Biases (W&B) Initialized:")
                 print(f"[SAVER] {'Project Name':<14}: {self.wandb_project}")
