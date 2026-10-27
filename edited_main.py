@@ -3,8 +3,8 @@ import os
 import torch.optim as optim
 import wandb
 
-import sys
-import shlex
+
+
 from segment_anything import sam_model_registry
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 from utils.dataset_utils import get_train_val_dataloaders
@@ -15,6 +15,8 @@ from inference import inference_dataloader
 from utils.saver import Saver
 
 import argparse
+import sys
+import shlex
 from utils.utils import str2bool
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))

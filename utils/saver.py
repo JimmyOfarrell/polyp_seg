@@ -1,13 +1,14 @@
 from pathlib import Path
 import torch
 import torchvision
-import json
+
 import numpy as np 
 import matplotlib.pyplot as plt
 
 import os
 import csv
 import wandb
+import json
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
@@ -42,7 +43,7 @@ class Saver:
         os.makedirs(self.ckpt_dir, exist_ok=True)
         os.makedirs(self.vis_dir,  exist_ok=True)
         print(f"[SAVER] Checkpoint directory created: {self.ckpt_dir}")
-        print(f"[SAVER] Visualization directory created: {self.vis_dir}")
+        print(f"[SAVER] Visualization directory created: {self.vis_dir}", '\n')
         
         self.metrics_table = None
         self.columns = None
@@ -73,7 +74,7 @@ class Saver:
                 print(f"[SAVER] {'Run ID':<14}: {self.wandb_run_id}")
                 print(f"[SAVER] {'Local Dir':<14}: {self.wandb_run_dir}")
                 print(f"[SAVER] {'Project URL':<14}: {self.wandb_project_url}")
-                print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}")
+                print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}", '\n')
 
                 self.wandb_info = {'project_name': self.wandb_project,
                                    'run_name': self.experiment_name,
@@ -82,24 +83,26 @@ class Saver:
                                    'project_url': self.wandb_project_url,
                                    'run_url': self.wandb_run_url}
 
-            else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}")
+            else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}", '\n')
         except Exception as e:
             self.wandb_enabled = False
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
-            print("[SAVER] Continuing with local logging only.")   
+            print("[SAVER] Continuing with local logging only.", '\n')   
                
     def log_cmd(self, cmd):
         print(f"[SAVER] Command: {cmd}")
         self.writer.add_text('cmd', cmd, 0)
         self.writer.flush()
-        input('STOP')
+
         out_path = os.path.join(self.experiment_dir, 'cmd.json')
         with open(out_path, 'w', encoding='utf-8') as fp: json.dump({'cmd': cmd}, fp, indent=2, ensure_ascii=False)
-        print(f"[SAVER] Command saved: {out_path}")
+        print(f"[SAVER] Command saved: {out_path}", '\n')
 
-        if getattr(self, 'wandb_enabled', False): self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
-        input('STOP')
+        try:
+            if getattr(self, 'wandb_enabled', False) and self.wandb_run is not None: self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
+        except Exception as e: print(f"[SAVER] WARNING: wandb.config.update('cmd') failed: {type(e).__name__}: {e}", '\n')
+    
 
     
     def log_hparams(self,params_dict):

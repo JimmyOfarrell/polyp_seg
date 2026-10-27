@@ -49,13 +49,13 @@ def set_seed(seed, strict=False):
         torch.backends.cudnn.benchmark = False
         try: torch.use_deterministic_algorithms(True, warn_only=True)
         except TypeError: torch.use_deterministic_algorithms(True)
-        print(f"[set_seed] Strict determinism enabled (seed={seed}). Training may be slower.") 
+        print(f"[set_seed] Strict determinism enabled (seed={seed}). Training may be slower.", '\n') 
     else:
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
         try: torch.use_deterministic_algorithms(False)  
         except Exception as e: print(f"[set_seed] Warning: could not disable deterministic algorithms: {e}")
-        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).")           
+        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).", '\n')           
 
 def get_input_dict(imgs, original_sz, img_sz, point_coords=None, point_labels=None, boxes=None, mask_inputs=None):
     batched_input = []
