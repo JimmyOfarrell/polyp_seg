@@ -424,11 +424,11 @@ if __name__ == '__main__':
     args['exp_folder'] = os.path.join('results', args['experiment_name'])
     
     saver = Saver(output_folder='results', experiment_name=args['experiment_name'], wandb_mode=args['wandb_mode'], wandb_project=args['wandb_project'], wandb_entity=args['wandb_entity'], args=args)
-    args['path']= saver.path
+    args['path']= saver.experiment_dir
     saver.log_hparams(args)
     cmd = str(sys.argv)
     saver.log_cmd(cmd)
-    args['vis_folder'] = os.path.join(saver.path, 'vis')
+    args['vis_folder'] = os.path.join(saver.experiment_dir, 'vis')
     
     sam_ckpt = "cp/" + args['sam_ckpt'] + ".pth"
     

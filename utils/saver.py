@@ -1,47 +1,50 @@
+from pathlib import Path
+import torch
+import torchvision
+import json
+import numpy as np 
+import matplotlib.pyplot as plt
+
 import os
 import csv
 import wandb
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
-from pathlib import Path
-
-
-import torch
-
-import torchvision
-import json
-
-
-import numpy as np 
-import matplotlib.pyplot as plt
-
 
 class Saver:
     def __init__(self, output_folder, args):
-        experiment_name = args['experiment_name']
-        wandb_mode, wandb_project, wandb_entity, wandb_tags  = args['wandb_mode'], args['wandb_project'], args['wandb_entity'], args['wandb_tags']
-        if wandb_mode not in {"online", "offline", "disabled"}: raise ValueError(f"Unsupported wandb_mode: {wandb_mode!r}")
+        self.experiment_name = args['experiment_name']
+        self.wandb_mode, self.wandb_project, self.wandb_entity = args['wandb_mode'], args['wandb_project'], args['wandb_entity']
+        self.wandb_tags = args['wandb_tags']
+        if self.wandb_mode not in {"online", "offline", "disabled"}: raise ValueError(f"Unsupported wandb_mode: {self.wandb_mode!r}")
         os.makedirs(output_folder, exist_ok=True)
 
         timestamp_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        self.path = os.path.join(output_folder, f'{timestamp_str}_{experiment_name}')
-        os.makedirs(self.path, exist_ok=True)
-        print('\n'+'='*60)
-        print(f"[SAVER] Experiment directory created: {self.path}")
+        self.experiment_dir = os.path.join(output_folder, f'{timestamp_str}_{self.experiment_name}')
+        os.makedirs(self.experiment_dir, exist_ok=True)
+        print(f"[SAVER] Config | experiment={self.experiment_name} | wandb_mode={self.wandb_mode} | wandb_project={self.wandb_project} | wandb_tags={self.wandb_tags}")
+        print(f"[SAVER] Experiment directory created: {self.experiment_dir}")
 
-        self.writer = SummaryWriter(str(self.path))
+        self.writer = SummaryWriter(str(self.experiment_dir), flush_secs=30)
+        print(f"[SAVER] TensorBoard writer initialized | flush_secs=30")
 
-        self.csv_file = os.path.join(self.path, 'metrics.csv')
-        with open(self.csv_file, 'w', encoding='UTF8', newline='') as f: csv.writer(f).writerow(['metric', 'epoch', 'value'])
-        print(f"[SAVER] Metrics CSV initialized: {self.csv_file}")
+        self.metrics_csv_file = os.path.join(self.experiment_dir, 'metrics.csv')
+        with open(self.metrics_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['metric', 'epoch', 'value'])
+        print(f"[SAVER] Metrics CSV initialized: {self.metrics_csv_file}")
 
-        self.ckpt_path = os.path.join(self.path, 'ckpt')
-        self.vis_path  = os.path.join(self.path, 'vis')
-        os.makedirs(self.ckpt_path, exist_ok=True)
-        os.makedirs(self.vis_path,  exist_ok=True)
-        print(f"[SAVER] Checkpoint directory initialized: {self.ckpt_path}")
-        print(f"[SAVER] Visualization directory initialized: {self.vis_path}")
+        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
+        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', args['best_metric']])
+        print(f"[SAVER] Best CSV initialized: {self.best_csv_file}")
+
+        self.ckpt_dir = os.path.join(self.experiment_dir, 'ckpt')
+        self.vis_dir  = os.path.join(self.experiment_dir, 'vis')
+        os.makedirs(self.ckpt_dir, exist_ok=True)
+        os.makedirs(self.vis_dir,  exist_ok=True)
+        print(f"[SAVER] Checkpoint directory initialized: {self.ckpt_dir}")
+        print(f"[SAVER] Visualization directory initialized: {self.vis_dir}")
+
+        input('stop!!!!!!!!')
         
         self.metrics_table = None
         self.columns = None
@@ -51,9 +54,9 @@ class Saver:
         self.wandb_run = None
 
         try:
-            wandb_settings = wandb.Settings(mode=wandb_mode)
-            self.wandb_run = wandb.init(project=wandb_project, entity=wandb_entity, settings=wandb_settings, tags=wandb_tags, name=experiment_name, config=args, dir=self.path)
-            self.wandb_enabled = (wandb_mode != 'disabled') and (wandb.run is not None)
+            wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
+            self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
+            self.wandb_enabled = (self.wandb_mode != 'disabled') and (wandb.run is not None)
                 
             if self.wandb_enabled:print(f"[SAVER] W&B initialized | run_id={self.wandb_run.id}, url={self.wandb_run.url}")
             else: print(f"[SAVER] W&B logging inactive | mode={wandb_mode}")
@@ -70,7 +73,7 @@ class Saver:
         print(f"[SAVER] Command: {cmd}")
         self.writer.add_text('cmd', cmd, 0)
 
-        out_path = os.path.join(self.path, 'cmd.json')
+        out_path = os.path.join(self.experiment_dir, 'cmd.json')
         with open(out_path, 'w', encoding='utf-8') as fp: json.dump({'cmd': cmd}, fp, indent=2, ensure_ascii=False)
         print(f"[SAVER] Command saved: {out_path}")
 
@@ -91,7 +94,7 @@ class Saver:
                 print("[WARNING] Continuing with local hyperparameter logging.")
             else: print("[SAVER] WandB is disabled; skipping configuration update.")        
     
-        out_path = os.path.join(self.path, 'hparams.json')
+        out_path = os.path.join(self.experiment_dir, 'hparams.json')
         print(f"[SAVER] JSON output path: {out_path}")
     
         try:
@@ -150,11 +153,11 @@ class Saver:
             if self.wandb_enabled:
                 try: wandb.log({name: value, "EPOCH": iter_n})
                 except Exception as e: print(f"[WARN] wandb.log failed for '{name}': {type(e).__name__}: {e}")
-            with open(self.csv_file, 'a', encoding='UTF8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
+            with open(self.metrics_csv_file, 'a', encoding='UTF8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
 
     def save_model(self, net, name, step, fixed_name = False):
         filename = f'{name}.pth' if fixed_name else f'{name}_{step:05d}.pth'
-        path = os.path.join(str(self.ckpt_path), filename)
+        path = os.path.join(str(self.ckpt_dir), filename)
         torch.save(net.state_dict(), path)
         print(f"[SAVER] Checkpoint saved: {path}")
         return path        
@@ -163,13 +166,13 @@ class Saver:
 
     def save_data(self,data,name:str, subfolder:str = ''):
         ''' Save generic data in experiment folder '''
-        os.makedirs(os.path.join(self.path, subfolder), exist_ok=True)
-        torch.save(data, os.path.join(self.path, subfolder, f'{name}.pth'))
+        os.makedirs(os.path.join(self.experiment_dir, subfolder), exist_ok=True)
+        torch.save(data, os.path.join(self.experiment_dir, subfolder, f'{name}.pth'))
         
     def save_json(self, data, name: str, subfolder: str = ''):
         ''' Save json data in experiment folder '''
-        os.makedirs(os.path.join(self.path, subfolder), exist_ok=True)
-        with open(os.path.join(self.path, subfolder, f'{name}.json'), 'w') as f:
+        os.makedirs(os.path.join(self.experiment_dir, subfolder), exist_ok=True)
+        with open(os.path.join(self.experiment_dir, subfolder, f'{name}.json'), 'w') as f:
             json.dump(data, f, default=str, indent=2)
         
     def log_histogram(self, name: str, values: torch.Tensor, iter_n: int):
@@ -187,7 +190,7 @@ class Saver:
         Close Tensorboard connection
         '''
         self.writer.close()
-        self.csv_file.close()
+        self.metrics_csv_file.close()
 
 
 
@@ -260,14 +263,14 @@ class Saver:
             fig.delaxes(axes.flatten()[i])
         plt.tight_layout()
 
-        plt.savefig(os.path.join(self.vis_path, name+'.png'))
+        plt.savefig(os.path.join(self.vis_dir, name+'.png'))
 
         plt.close()
         
     @torch.no_grad()
     def save_batch(self, images: torch.Tensor, name: str, step: int, remove_batch_dim: bool = True, subfolder: str = '', cmap = None, normalize = False):
         
-        os.makedirs(os.path.join(self.vis_path, subfolder), exist_ok=True)
+        os.makedirs(os.path.join(self.vis_dir, subfolder), exist_ok=True)
     
         if remove_batch_dim:
             images = images.squeeze(0)
@@ -282,7 +285,7 @@ class Saver:
             color_imgs = colormap(np_imgs)
             images = torch.from_numpy(color_imgs).permute(0, 3, 1, 2)
             
-        torchvision.utils.save_image(images, os.path.join(self.vis_path, subfolder, f'{name}_{step}.png'))
+        torchvision.utils.save_image(images, os.path.join(self.vis_dir, subfolder, f'{name}_{step}.png'))
         
     
     def create_table(self, columns=None):

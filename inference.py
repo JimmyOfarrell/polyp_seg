@@ -104,7 +104,7 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
 
             loss_list.append(loss.item())
             
-        pbar.set_description(f'(val | polyp) epoch {epoch} :: DiceT {np.mean(dice_list_true):.4f} :: DiceF {np.mean(dice_list_false):.4f} :: IoU {np.mean(iou_list):.4f}')
+        pbar.set_description(f'(val | polyp) epoch {epoch} :: loss {np.mean(loss_list):.4f} :: DiceT {np.mean(dice_list_true):.4f} :: DiceF {np.mean(dice_list_false):.4f} :: IoU {np.mean(iou_list):.4f}')
         
         iouMetric.reset()
         diceMetric_true.reset()

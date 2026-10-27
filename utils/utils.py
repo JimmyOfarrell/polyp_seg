@@ -1,12 +1,16 @@
 import argparse
-import random
-import numpy as np
-import torch
+
+
+
 from torch import nn
 from monai.utils import set_determinism
 
 import os
 import torch.nn.functional as F
+
+import random
+import numpy as np
+import torch
  
 def disable_batchnorm_running_stats(model):
     count = 0
@@ -30,7 +34,7 @@ def str2bool(v):
 
     raise argparse.ArgumentTypeError(f'Boolean value expected, got {v!r} of type {type(v).__name__}')
 
-def set_seed(seed, strict=True):
+def set_seed(seed, strict=False):
     print('='*60)
     random.seed(seed)
     np.random.seed(seed)
@@ -51,8 +55,7 @@ def set_seed(seed, strict=True):
         torch.backends.cudnn.benchmark = True
         try: torch.use_deterministic_algorithms(False)  
         except Exception as e: print(f"[set_seed] Warning: could not disable deterministic algorithms: {e}")
-        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).")
-    print('='*60)           
+        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).")           
 
 def get_input_dict(imgs, original_sz, img_sz, point_coords=None, point_labels=None, boxes=None, mask_inputs=None):
     batched_input = []
