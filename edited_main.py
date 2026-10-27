@@ -119,7 +119,7 @@ def main(args=None, sam_args=None, saver=None):
 
     model = model.to(args['device'])
     print(f"[MAIN] Model on device: {device}", '\n')
-    print('='*60)
+    input('stop')
 
     if args['disable_batchnorm_running_stats']: disable_bn(model)
 
