@@ -154,8 +154,8 @@ class Segmentor2DNet(nn.Module):
         self.segmentor = None
 
     def init_segmentor_head(self, segmentor_type, in_channels=256):
+        Idim = int(self.args.get('Idim', 512))
         if segmentor_type == 'PointwiseConv':
-            Idim = int(self.args.get('Idim', 512))
             self.segmentor = PointwiseCNN(in_channels=in_channels, out_channels=self.out_channels,output_size=(Idim, Idim))
         elif segmentor_type == 'ConvUpsample':
             self.segmentor = ConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
@@ -163,9 +163,7 @@ class Segmentor2DNet(nn.Module):
         else: raise ValueError(f"Segmentor '{segmentor_type}' not implemented. Choose from: PointwiseConv, ConvUpsample, TransposeConvUpsample.")
 
         n_params = sum(p.numel() for p in self.segmentor.parameters())
-        Idim = int(self.args.get('Idim', 512))
 
-        print('\n' + '='*60)
         print(f"[SEGMENTOR] Aggregator Summary: {segmentor_type}")
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
@@ -193,11 +191,11 @@ class Segmentor2DNet(nn.Module):
 
         print("-" * 58)
         print(f"{'Total parameters':<22} | {n_params:,} ({n_params/1e6:.4f}M)")
-        print("-" * 58)
-        print('='*60)
+        print("-" * 58, '\n')
 
     def preprocess(self, x):
         if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")
+        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} Polyp pipeline requires RGB.")
         return x
 
 class ModelEmb2DNet(nn.Module):

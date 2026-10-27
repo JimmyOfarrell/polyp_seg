@@ -205,13 +205,16 @@ class HarDNet(nn.Module):
                 self.load_state_dict(state)
                 print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from local file.")
                 return
+            else: print(f"[BACKBONE] WARNING: weight_dir='{weight_dir}' set but file not found: {weight_file}. Falling back to URL download.")
 
         key = (arch, depth_wise)
-        if key not in self._PRETRAINED_URLS: raise ValueError(f"No pretrained weights for arch={arch}, depth_wise={depth_wise}. Available: {list(self._PRETRAINED_URLS.keys())}. Provide local file via weight_path or set pretrained=False.")
+        if key not in self._PRETRAINED_URLS:
+            available = list(self._PRETRAINED_URLS.keys())
+            raise ValueError(f"No pretrained weights for arch={arch}, depth_wise={depth_wise}. Available: {available}. Options: (1) use one of the available combos, (2) provide local weights via weight_dir, or (3) set pretrained=False.")
         checkpoint = self._PRETRAINED_URLS[key]
         print(f"[BACKBONE] Downloading ImageNet weights: {checkpoint}")
         try:state = torch.hub.load_state_dict_from_url(checkpoint, progress=True, map_location='cpu')
-        except Exception as e: raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_path.") from e
+        except Exception as e: raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_dir.") from e
         self.load_state_dict(state)
         print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.", '\n')
 

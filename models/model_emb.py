@@ -1,19 +1,20 @@
+import torch.nn.functional as F
 from models.base import ModelEmb2DNet
 from models.hardnet import HarDNet
 from models.model_single import SmallDecoder
-import torch.nn.functional as F
-import torch.nn as nn
 
 class ModelEmb(ModelEmb2DNet):
-    def __init__(self, args, backbone_weight_dir='', out_ch=256):
+    def __init__(self, args, backbone_weight_dir='', out_ch=256, use_tanh=True):
         super().__init__(args, out=out_ch)
         self.depth_wise = bool(args['depth_wise'])
         self.arch = int(args['order'])
-        self.pretrained = args['pretrained']
+        self.pretrained = bool(args['pretrained'])
+        self.out_ch = out_ch
+        self.use_tanh = use_tanh
         self.backbone_weight_dir = backbone_weight_dir
         self.backbone = HarDNet(depth_wise=self.depth_wise, arch=self.arch, pretrained=self.pretrained, weight_dir=self.backbone_weight_dir)
         self.backbone_full_features = self.backbone.full_features
-        self.decoder = SmallDecoder(self.backbone_full_features, out=out_ch)
+        self.decoder = SmallDecoder(self.backbone_full_features, out=self.out_ch, use_tanh=self.use_tanh)
         for param in self.backbone.parameters(): param.requires_grad = True
 
         n_bb  = sum(p.numel() for p in self.backbone.parameters())
@@ -25,12 +26,12 @@ class ModelEmb(ModelEmb2DNet):
         print("-" * 58)
         print(f"{'Property':<22} | {'Value'}")
         print("-" * 58)
-        print(f"{'Backbone':<22} | HarDNet-{int(args['order'])}")
-        print(f"{'Depth-wise':<22} | {bool(args['depth_wise'])}")
-        print(f"{'Pretrained':<22} | {bool(args['pretrained'])}")
+        print(f"{'Backbone':<22} | HarDNet-{self.arch}")
+        print(f"{'Depth-wise':<22} | {self.depth_wise}")
+        print(f"{'Pretrained':<22} | {self.pretrained}")
         print(f"{'Full features':<22} | {self.backbone_full_features}")
-        print(f"{'Decoder':<22} | SmallDecoder (use_tanh=True)")
-        print(f"{'Output channels':<22} | {out_ch}")
+        print(f"{'Decoder':<22} | SmallDecoder (use_tanh={self.use_tanh})")
+        print(f"{'Output channels':<22} | {self.out_ch}")
         print("-" * 58)
         print(f"{'Backbone params':<22} | {n_bb:,} ({n_bb/1e6:.2f}M)")
         print(f"{'Decoder params':<22} | {n_dec:,} ({n_dec/1e6:.2f}M)")

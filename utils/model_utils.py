@@ -4,20 +4,18 @@ from models.model_emb import ModelEmb
 from models.segmentor_net import HardNetSegmentor
 from packaging import version
 
-def get_model(args):
+def get_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
     if args['model_emb'] != 'HardNet': raise ValueError(f"Unsupported model_emb='{args['model_emb']}'. Only 'HardNet' is currently supported.")
-    try: model = ModelEmb(args=args)
+    try: model = ModelEmb(args=args, backbone_weight_dir=backbone_weight_dir, out_ch=out_ch, use_tanh=use_tanh)
     except Exception as e: raise RuntimeError(f"Failed to build ModelEmb (model_emb={args['model_emb']}): {e}") from e
 
     ckpt_dir = args['ckpt_path']
     if ckpt_dir is not None:
-        ckpt_path = ckpt_dir
-
-        try: ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+        try: ckpt = torch.load(ckpt_dir, map_location='cpu', weights_only=False)
         except TypeError:
-            try: ckpt = torch.load(ckpt_path, map_location='cpu')
-            except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
-        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
+            try: ckpt = torch.load(ckpt_dir, map_location='cpu')
+            except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
+        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
 
         if isinstance(ckpt, dict):
             if 'model_state_dict' in ckpt: state_dict = ckpt['model_state_dict']
@@ -30,11 +28,16 @@ def get_model(args):
         try: result = model.load_state_dict(state_dict, strict=strict)
         except RuntimeError as e: raise RuntimeError(f"Failed to load state_dict into model: {e}") from e
 
-        print(f"[get_model] Checkpoint loaded from '{ckpt_path}' (strict={strict})")
+        print(f"[get_model] Checkpoint loaded from '{ckpt_dir}' (strict={strict})")
 
         if not strict:
-            if result.missing_keys: print(f"[get_model]   Missing keys   : {len(result.missing_keys)}")
-            if result.unexpected_keys: print(f"[get_model]   Unexpected keys: {len(result.unexpected_keys)}")
+            if result.missing_keys:
+                print(f"[get_model]   Missing keys   : {len(result.missing_keys)}")
+                for key in result.missing_keys[:5]: print(f"   - {key}")
+            if result.unexpected_keys:
+                print(f"[get_model]   Unexpected keys: {len(result.unexpected_keys)}")
+                for key in result.unexpected_keys[:5]: print(f"   - {key}")
+    print()        
     return model
 
 
@@ -52,21 +55,21 @@ def sam_call(batched_input, sam, dense_embeddings):
         multimask_output=False)
     return low_res_masks
 
-def get_standard_model(args):
-    if args['net']=='HardNetSegmentor': model = HardNetSegmentor(args, segmentor=args['net_segmentor'])
+def get_standard_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
+    if args['net']=='HardNetSegmentor': model = HardNetSegmentor(args, segmentor=args['net_segmentor'], backbone_weight_dir=backbone_weight_dir, out_ch=out_ch, use_tanh=use_tanh)
     else: raise ValueError(f"Model not implemented for net='{args['net']}' Supported: net='HardNetSegmentor'")
     
-    if args.get('ckpt_path') is not None:
-        ckpt_path = args['ckpt_path']
-        print(f"[get_standard_model] Loading checkpoint: {ckpt_path}")
+    ckpt_dir = args['ckpt_path']
+    if ckpt_dir is not None:
+        print(f"[get_standard_model] Loading checkpoint: {ckpt_dir}")
 
         try:
             torch_version = version.parse(torch.__version__)
-            if torch_version >= version.parse('1.13.0'): ckpt_model = torch.load(ckpt_path, map_location='cpu', weights_only=False)
-            else: ckpt_model = torch.load(ckpt_path, map_location='cpu')
-        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
+            if torch_version >= version.parse('1.13.0'): ckpt_model = torch.load(ckpt_dir, map_location='cpu', weights_only=False)
+            else: ckpt_model = torch.load(ckpt_dir, map_location='cpu')
+        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
  
-        if not args['use_sam'] and 'segmentor_finetune_backbone' in args.keys(): strict = False
+        if not args['use_sam'] and args['segmentor_finetune_backbone']: strict = False
         else: strict = True
 
         if isinstance(ckpt_model, nn.Module): state_dict = ckpt_model.state_dict()
@@ -94,8 +97,14 @@ def get_standard_model(args):
             if result.missing_keys:
                 print(f"[get_standard_model]   Missing keys   : {len(result.missing_keys)}")
                 for key in result.missing_keys[:5]: print(f"   - {key}")
+                if len(result.missing_keys) > 5: print(f"   ... ({len(result.missing_keys) - 5} more)")
+                if all(k.startswith('segmentor.') for k in result.missing_keys): print(f"[get_standard_model]   Note: all missing keys belong to 'segmentor.*' (new aggregator in Phase 2, initialized from scratch)")
+            else: print(f"[get_standard_model]   Missing keys   : 0 ✅")
+
             if result.unexpected_keys:
                 print(f"[get_standard_model]   Unexpected keys: {len(result.unexpected_keys)}")
                 for key in result.unexpected_keys[:5]: print(f"   - {key}")
+            else: print(f"[get_standard_model]   Unexpected keys: 0 ✅")    
 
+    print()
     return model

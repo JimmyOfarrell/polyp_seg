@@ -113,16 +113,12 @@ def main(args=None, sam_args=None, saver=None):
     if not args['use_standard_net']:
         print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning):", '\n')
         model = get_model(args)
-        input('stop')
     else:
-        print('\n'+'='*120)
-        print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only)")
+        print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only):")
         model = get_standard_model(args)
-        print('='*120)
 
-    print('\n'+'='*60)
     model = model.to(args['device'])
-    print(f"[MAIN] Model on device: {args['device']}")
+    print(f"[MAIN] Model on device: {device}", '\n')
     print('='*60)
 
     if args['disable_batchnorm_running_stats']: disable_bn(model)
