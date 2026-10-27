@@ -31,18 +31,18 @@ class Saver:
 
         self.metrics_csv_file = os.path.join(self.experiment_dir, 'metrics.csv')
         with open(self.metrics_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['metric', 'epoch', 'value'])
-        print(f"[SAVER] Metrics CSV initialized: {self.metrics_csv_file}")
+        print(f"[SAVER] Metrics CSV created: {self.metrics_csv_file}")
 
         self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
         with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', args['best_metric']])
-        print(f"[SAVER] Best CSV initialized: {self.best_csv_file}")
+        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
 
         self.ckpt_dir = os.path.join(self.experiment_dir, 'ckpt')
         self.vis_dir  = os.path.join(self.experiment_dir, 'vis')
         os.makedirs(self.ckpt_dir, exist_ok=True)
         os.makedirs(self.vis_dir,  exist_ok=True)
-        print(f"[SAVER] Checkpoint directory initialized: {self.ckpt_dir}")
-        print(f"[SAVER] Visualization directory initialized: {self.vis_dir}")
+        print(f"[SAVER] Checkpoint directory created: {self.ckpt_dir}")
+        print(f"[SAVER] Visualization directory created: {self.vis_dir}")
         
         self.metrics_table = None
         self.columns = None
@@ -50,18 +50,26 @@ class Saver:
         
         self.wandb_enabled = False
         self.wandb_run = None
+        self.wandb_enabled = False
+        self.wandb_run = None
+        self.wandb_run_id = None
+        self.wandb_run_dir = None
+        self.wandb_project_url = None
+        self.wandb_run_url = None
+        self.wandb_info = None
 
         try:
             wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
             self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
-            self.wandb_enabled = (self.wandb_mode != 'disabled') and (wandb.run is not None)
+            self.wandb_enabled = (self.wandb_mode != 'disabled') and (self.wandb.run is not None)
                 
             if self.wandb_enabled:
-                self.wandb_run_id = wandb.run.id
-                self.wandb_run_dir = wandb.run.dir
-                self.wandb_project_url = wandb.run.project_url
-                self.wandb_run_url = wandb.run.url
+                self.wandb_run_id = self.wandb.run.id
+                self.wandb_run_dir = self.wandb.run.dir
+                self.wandb_project_url = self.wandb.run.project_url
+                self.wandb_run_url = self.wandb.run.url
 
+                print("[SAVER] Weights & Biases (W&B) Initialized:")
                 print(f"[SAVER] {'Project Name':<14}: {self.wandb_project}")
                 print(f"[SAVER] {'Run Name':<14}: {self.experiment_name}")
                 print(f"[SAVER] {'Run ID':<14}: {self.wandb_run_id}")
@@ -70,32 +78,31 @@ class Saver:
                 print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}")
 
                 self.wandb_info = {'project_name': self.wandb_project,
-                              'run_name': self.experiment_name,
-                              'run_id': self.wandb_run_id,
-                              'local_dir': self.wandb_run_dir,
-                              'project_url': self.wandb_project_url,
-                              'run_url': self.wandb_run_url}
+                                   'run_name': self.experiment_name,
+                                   'run_id': self.wandb_run_id,
+                                   'local_dir': self.wandb_run_dir,
+                                   'project_url': self.wandb_project_url,
+                                   'run_url': self.wandb_run_url}
 
             else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}")
         except Exception as e:
             self.wandb_enabled = False
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
-            print("[SAVER] Continuing with local logging only.")
-        input('Stop!!!!!!!!!')    
-        
-        
+            print("[SAVER] Continuing with local logging only.")   
+               
     def log_cmd(self, cmd):
-        print('\n' + '='*60)
         print(f"[SAVER] Command: {cmd}")
         self.writer.add_text('cmd', cmd, 0)
-
+        self.writer.flush()
+        input('STOP')
         out_path = os.path.join(self.experiment_dir, 'cmd.json')
         with open(out_path, 'w', encoding='utf-8') as fp: json.dump({'cmd': cmd}, fp, indent=2, ensure_ascii=False)
         print(f"[SAVER] Command saved: {out_path}")
 
         if getattr(self, 'wandb_enabled', False): self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
-        print('='*60)
+        input('STOP')
+
     
     def log_hparams(self,params_dict):
         hparams_str = json.dumps(params_dict, indent=2, default=str)
