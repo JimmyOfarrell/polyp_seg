@@ -123,6 +123,11 @@ class Saver:
         except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
         print()       
 
+    def log_best(self, epoch, best_value):
+        with open(self.best_csv_file, 'a', encoding='utf-8', newline='') as f:
+            csv.writer(f).writerow([epoch, best_value])
+            f.flush()
+
     def wb_mask(self, img, mask, gt):
         pred_shifted = mask.astype(np.uint8) + 2
         return wandb.Image(
