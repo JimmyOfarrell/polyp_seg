@@ -11,9 +11,6 @@ from torch.amp import autocast
 
 @torch.no_grad()
 def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
-    print('\n' + '=' * 60)
-    print(f"[INFERENCE] Validation | Epoch {epoch}")
-    print('=' * 60)
 
     pbar = tqdm(val_dataloader, desc=f"Val E{epoch}")
 
@@ -45,7 +42,15 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'.")
 
-    if epoch == 0: print(f"[INFERENCE] Config | net={net_name} | apply_sigm={apply_sigm} | threshold={threshold} | include_bg={include_bg}")
+    if use_std_net:
+        finetune_bb = args.get('segmentor_finetune_backbone', False)
+        phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
+    else: phase_str = "1 (SAM-guided)"
+
+    if epoch == 0:
+            print('\n')
+            print(f"[VALIDATION] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
+            print(f"[VALIDATION] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
 
     iou_list, dice_list_true, dice_list_false, loss_list = [], [], [], []
     
@@ -104,7 +109,7 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
 
             loss_list.append(loss.item())
             
-        pbar.set_description(f'(val | polyp) epoch {epoch} :: loss {np.mean(loss_list):.4f} :: DiceT {np.mean(dice_list_true):.4f} :: DiceF {np.mean(dice_list_false):.4f} :: IoU {np.mean(iou_list):.4f}')
+        pbar.set_description(f'(val | polyp) epoch {epoch} | (loss {np.mean(loss_list):.4f}) | (DiceT {np.mean(dice_list_true):.4f}) | (DiceF {np.mean(dice_list_false):.4f}) | (iou {np.mean(iou_list):.4f})')
         
         iouMetric.reset()
         diceMetric_true.reset()

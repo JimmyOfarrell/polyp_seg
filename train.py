@@ -9,7 +9,7 @@ from utils.model_utils import sam_call
 import torch.nn.functional as F
 from torch.amp import autocast
 
-def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler=None, scaler=None):
+def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler=None, scaler=None, use_amp=True):
     model.train()
     if sam is not None: sam.eval()
 
@@ -41,10 +41,9 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
     if epoch == 0:
-        print()
+        print('\n')
         print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
-        print(f"[TRAIN] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}")
-    input('stop')
+        print(f"[TRAIN] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
     
     Idim = int(args.get('Idim', 512))
     optimizer.zero_grad()
@@ -53,7 +52,6 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     mask_key = args.get('mask_key', 'mask')
     total_batches = len(train_dataloader)
     acc_steps = int(args.get('acc_steps', 4))
-    use_amp = args.get('use_cuda_amp', False) and torch.cuda.is_available()
 
     for ix,  sample in enumerate(pbar):      
         imgs = sample[image_key]
@@ -122,7 +120,8 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
             if args.get('scheduler') == 'ReduceLROnPlateau': scheduler.step(loss.item())
             else: scheduler.step()
             
-        pbar.set_description(f'(train | polyp) epoch {epoch} :: loss {np.mean(loss_list):.4f} :: dice {np.mean(dice_list):.4f} :: iou {np.mean(iou_list):.4f}')
+        pbar.set_description(f'(train | polyp) epoch {epoch} | (loss: {np.mean(loss_list):.4f}) | (dice: {np.mean(dice_list):.4f}) | (iou: {np.mean(iou_list):.4f})')
+        print()
         diceMetric.reset()
         iouMetric.reset()
 

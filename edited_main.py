@@ -265,27 +265,28 @@ def main(args=None, sam_args=None, saver=None):
         
     best = -1.0
     metric_name = args['best_metric']                      
-    print(f"[MAIN] Tracking best model by '{metric_name}' in: {saver.best_csv_file}", '\n')
+    print(f"[MAIN] Tracking best model by '{metric_name}' in: {saver.best_csv_file}")
 
     device_is_cuda = getattr(args['device'], 'type', 'cpu') == 'cuda'
     use_amp = bool(use_cuda_amp) and cuda_available and device_is_cuda
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
-    print(f"[MAIN] AMP enabled: {use_amp} (requested={use_cuda_amp_requested}, cuda_available={cuda_available}, device={device})")
+    print(f"[MAIN] AMP enabled: {use_amp} (requested={use_cuda_amp_requested}, cuda_available={cuda_available}, device={device})", '\n')
 
     for epoch in range(num_epochs):
-        avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler)
+        avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler, use_amp)
         saver.log_loss('train_loss', avg_loss, epoch)
         saver.log_loss('train_dice', avg_dice, epoch)
         saver.log_loss('train_iou', avg_iou, epoch)
 
-        print(f"[MAIN] [Epoch {epoch}] train_loss={avg_loss:.4f} | train_dice={avg_dice:.4f} | train_iou={avg_iou:.4f}")
+        print(f"[MAIN] [Epoch {epoch}] train_loss={avg_loss:.4f} | train_dice={avg_dice:.4f} | train_iou={avg_iou:.4f}", '\n')
 
         with torch.no_grad():
             dice_true, dice_false, iou_val, val_loss = inference_dataloader(val_dataloader, model, sam, epoch, args, saver)
             saver.log_loss('val_loss', val_loss, epoch)
-            saver.log_loss('IoU', iou_val, epoch)
-            saver.log_loss('Dice/include_true', dice_true, epoch)
-            saver.log_loss('Dice/include_false', dice_false, epoch)
+            saver.log_loss('iou', iou_val, epoch)
+            saver.log_loss('dice/include_true', dice_true, epoch)
+            saver.log_loss('dice/include_false', dice_false, epoch)
+            print(f"[MAIN] [Epoch {epoch}] val_loss={val_loss:.4f} | val_dice/include_true={dice_true:.4f} | val_dice/include_false={dice_false:.4f} | val_iou={iou_val:.4f}", '\n')
 
             best_metric_name = args.get('best_metric', 'dice_f')
 
@@ -298,12 +299,10 @@ def main(args=None, sam_args=None, saver=None):
                 torch.save(model.state_dict(), args['best_ckpt_path'])
                 best = metric
                 print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
-                f_best.write(f'{epoch},{best}\n')
-                f_best.flush()
+                saver.log_best(epoch, best)
             
         if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
             
-    f_best.close()
     print(f"[MAIN] ✓ Training complete. Best metric: {best:.4f}")
     
 if __name__ == '__main__':

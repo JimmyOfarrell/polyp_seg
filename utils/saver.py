@@ -175,9 +175,9 @@ class Saver:
     def log_loss(self, name, value, iter_n):
             self.writer.add_scalar(name, value, iter_n)
             if self.wandb_enabled:
-                try: wandb.log({name: value, "EPOCH": iter_n})
-                except Exception as e: print(f"[WARN] wandb.log failed for '{name}': {type(e).__name__}: {e}")
-            with open(self.metrics_csv_file, 'a', encoding='UTF8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
+                try: wandb.log({name: value, "EPOCH": iter_n}, step=iter_n)
+                except Exception as e: print(f"[WARNING] wandb.log failed for '{name}': {type(e).__name__}: {e}")
+            with open(self.metrics_csv_file, 'a', encoding='utf-8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
 
     def save_model(self, net, name, step, fixed_name = False):
         filename = f'{name}.pth' if fixed_name else f'{name}_{step:05d}.pth'
