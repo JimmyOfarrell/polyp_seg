@@ -1,5 +1,5 @@
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torch
 from utils.utils import norm_batch, get_input_dict
 from monai.losses import DiceLoss, DiceCELoss
@@ -52,7 +52,7 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     total_batches = len(train_dataloader)
     acc_steps = int(args.get('acc_steps', 4))
 
-    if use_scheduler and ix == 0: saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)
+    if use_scheduler : saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)
 
     for ix,  sample in enumerate(pbar):      
         imgs = sample[image_key]
@@ -120,7 +120,6 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
                 else: scheduler.step()
         
         pbar.set_description(f'(train | polyp) epoch {epoch} | (loss: {np.mean(loss_list):.4f}) | (dice: {np.mean(dice_list):.4f}) | (iou: {np.mean(iou_list):.4f})')
-        print()
         diceMetric.reset()
         iouMetric.reset()
 

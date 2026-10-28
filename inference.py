@@ -1,5 +1,5 @@
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torch
 from utils.utils import norm_batch, get_input_dict
 from monai.losses import DiceLoss, DiceCELoss
