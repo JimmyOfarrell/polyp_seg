@@ -13,7 +13,7 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     model.train()
     if sam is not None: sam.eval()
 
-    threshold = args.get('theashold_discretize', 0.5)
+    threshold = args.get('threshold_discretize', 0.5)
     include_bg = args.get('include_background', False)
     net_name = args.get('net', 'HardNetSegmentor')
     use_std_net = args.get('use_standard_net', False)
@@ -41,7 +41,8 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
-    if epoch == 0: print(f"[TRAIN] Loss: {criterion_name} | include_bg={include_bg} | sigmoid={apply_sigm}")
+    if epoch == 0: print('\n', f"[TRAIN] Loss: {criterion_name} | include_bg={include_bg} | sigmoid={apply_sigm}")
+    input('stop')
     
     Idim = int(args.get('Idim', 512))
     optimizer.zero_grad()

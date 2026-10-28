@@ -191,7 +191,7 @@ class Segmentor2DNet(nn.Module):
 
         print("-" * 58)
         print(f"{'Total parameters':<22} | {n_params:,} ({n_params/1e6:.4f}M)")
-        print("-" * 58, '\n')
+
 
     def preprocess(self, x):
         if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")

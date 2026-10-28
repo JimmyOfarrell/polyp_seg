@@ -91,7 +91,7 @@ class Saver:
             print("[SAVER] Continuing with local logging only.", '\n')   
                
     def log_cmd(self, cmd):
-        print(f"[SAVER/log] Command: {cmd}")
+        print(f"[SAVER] Command: {cmd}")
         self.writer.add_text('cmd', cmd, 0)
         self.writer.flush()
 

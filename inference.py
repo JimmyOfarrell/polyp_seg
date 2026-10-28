@@ -20,7 +20,7 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
     model.eval()
     if sam is not None: sam.eval()
 
-    threshold  = args.get('theashold_discretize', 0.5)
+    threshold  = args.get('threshold_discretize', 0.5)
     include_bg = args.get('include_background', False)
     use_std_net = args.get('use_standard_net', False)
     net_name = args.get('net', 'HardNetSegmentor')

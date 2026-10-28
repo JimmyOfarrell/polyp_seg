@@ -273,7 +273,7 @@ def main(args=None, sam_args=None, saver=None):
     print(f"[MAIN] AMP enabled: {use_amp} (requested={use_cuda_amp_requested}, cuda_available={cuda_available}, device={device})")
 
     input('stop')
-    
+
     for epoch in range(num_epochs):
         avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler)
         saver.log_loss('train_loss', avg_loss, epoch)
@@ -377,7 +377,7 @@ For usage examples, see README.md
     parser.add_argument('--schedWarmupCos_last_epoch', type=int, default=-1, help='WarmupCosineSchedule last_epoch (use only if you are resuming a training)')
     parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Enable WandB watch')
     parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
-    parser.add_argument('--theashold_discretize', type=float, default=0.5, help='Threshold for binarization')
+    parser.add_argument('--threshold_discretize', type=float, default=0.5, help='Threshold for binarization')
     parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
     parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
     parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
