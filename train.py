@@ -41,7 +41,7 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
     if epoch == 0:
-        
+        print()
         print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
         print(f"[TRAIN] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}")
     input('stop')
