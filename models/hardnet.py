@@ -190,6 +190,7 @@ class HarDNet(nn.Module):
         print(f"{'Feature indices':<22} | {self.feature_indices}")
         print(f"{'Base layers':<22} | {len(self.base)}")
         print(f"{'Total parameters':<22} | {self.num_params:,} ({self.num_params / 1e6:.2f}M)")
+        print()
 
 
     def _load_pretrained(self, arch, depth_wise, weight_dir):

@@ -48,9 +48,8 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
     else: phase_str = "1 (SAM-guided)"
 
     if epoch == 0:
-            print('\n')
-            print(f"[VALIDATION] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
-            print(f"[VALIDATION] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
+            print()
+            print(f"[VALIDATION] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name} | threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
 
     iou_list, dice_list_true, dice_list_false, loss_list = [], [], [], []
     

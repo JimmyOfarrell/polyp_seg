@@ -41,9 +41,8 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
     if epoch == 0:
-        print('\n')
-        print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
-        print(f"[TRAIN] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
+        print()
+        print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name} | threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
     
     Idim = int(args.get('Idim', 512))
     optimizer.zero_grad()
@@ -52,6 +51,8 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     mask_key = args.get('mask_key', 'mask')
     total_batches = len(train_dataloader)
     acc_steps = int(args.get('acc_steps', 4))
+
+    if use_scheduler and ix == 0: saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)
 
     for ix,  sample in enumerate(pbar):      
         imgs = sample[image_key]
@@ -113,13 +114,11 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
-        
-        if use_scheduler and ix == 0: saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)    
 
-        if use_scheduler:
-            if args.get('scheduler') == 'ReduceLROnPlateau': scheduler.step(loss.item())
-            else: scheduler.step()
-            
+            if use_scheduler:
+                if args.get('scheduler') == 'ReduceLROnPlateau': scheduler.step(loss.item())
+                else: scheduler.step()
+        
         pbar.set_description(f'(train | polyp) epoch {epoch} | (loss: {np.mean(loss_list):.4f}) | (dice: {np.mean(dice_list):.4f}) | (iou: {np.mean(iou_list):.4f})')
         print()
         diceMetric.reset()

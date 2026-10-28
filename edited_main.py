@@ -300,7 +300,7 @@ def main(args=None, sam_args=None, saver=None):
                 best = metric
                 print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
                 saver.log_best(epoch, best)
-            
+            print()
         if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
             
     print(f"[MAIN] ✓ Training complete. Best metric: {best:.4f}")
@@ -385,6 +385,7 @@ For usage examples, see README.md
     args = vars(parser.parse_args())
     print(parser.description)
 
+    print('='*120)
     seed = args['seed']
     strict = args['strict_determinism']
     set_seed(seed=seed, strict=strict)
@@ -418,3 +419,4 @@ For usage examples, see README.md
     saver.log_hparams(args)    
 
     main(args=args, sam_args=sam_args, saver=saver)
+    print('='*120)

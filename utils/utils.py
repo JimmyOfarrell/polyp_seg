@@ -34,7 +34,6 @@ def str2bool(v):
     raise argparse.ArgumentTypeError(f'Boolean value expected, got {v!r} of type {type(v).__name__}')
 
 def set_seed(seed, strict=False):
-    print('='*60)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)

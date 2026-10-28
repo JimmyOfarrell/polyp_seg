@@ -105,7 +105,7 @@ def _download_from_gdrive(file_id_or_url: str, zip_path: Path) -> bool:
     print(f"[INFO] URL/ID: {url}")
 
     try:
-        output = gdown.download(url=url, output=str(zip_path), quiet=False, fuzzy=True)
+        output = gdown.download(url=url, output=str(zip_path), quiet=False)
     except Exception as exc:
         print(f"[ERROR] Download failed with exception: {exc}")
         print("[TIP] Ensure the file is shared as 'Anyone with the link'.")
