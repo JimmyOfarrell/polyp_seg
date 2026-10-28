@@ -272,8 +272,6 @@ def main(args=None, sam_args=None, saver=None):
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
     print(f"[MAIN] AMP enabled: {use_amp} (requested={use_cuda_amp_requested}, cuda_available={cuda_available}, device={device})")
 
-    input('stop')
-
     for epoch in range(num_epochs):
         avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler)
         saver.log_loss('train_loss', avg_loss, epoch)

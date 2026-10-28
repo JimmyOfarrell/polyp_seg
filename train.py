@@ -32,7 +32,6 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
         phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
     else: phase_str = "1 (SAM-guided)"
 
-    if epoch == 0: print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | apply_sigm={apply_sigm} | threshold={threshold} | include_bg={include_bg}")
     
     iou_list, dice_list, loss_list = [], [], []
     pbar = tqdm(train_dataloader, desc=f"Train E{epoch}")
@@ -41,7 +40,10 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
     if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
-    if epoch == 0: print('\n', f"[TRAIN] Loss: {criterion_name} | include_bg={include_bg} | sigmoid={apply_sigm}")
+    if epoch == 0:
+        
+        print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name}")
+        print(f"[TRAIN] threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}")
     input('stop')
     
     Idim = int(args.get('Idim', 512))
