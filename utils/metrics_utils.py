@@ -86,8 +86,12 @@ def compute_lesionwise_metrics(pred_mask, gt_mask):
 
 def stratified_lesion_analysis(pred_mask, gt_mask):
     """
-    Compute size-stratified Dice and sensitivity for small, medium, and large lesions.
-    pred_mask, gt_mask: binary numpy arrays (H, W, D)
+    Compute size-stratified Dice and sensitivity.
+    
+    Args:
+        pred_mask, gt_mask: binary numpy arrays (H, W) or (H, W, D).
+            For polyp (2D), most polyps fall in the 'large' bin (>100 pixels);
+            'small'/'medium' bins yield NaN unless polyp is very small/missed.
     """
 
     gt_labeled, num_gt = label(gt_mask)

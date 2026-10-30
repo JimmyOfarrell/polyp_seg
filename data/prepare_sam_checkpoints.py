@@ -6,9 +6,9 @@ It automatically detects the project root (parent of `dataset/`)
 and saves checkpoints in `<project_root>/cp/`.
 
 Usage:
-    python dataset/download_checkpoints.py --model sam_vit_b
-    python dataset/download_checkpoints.py --model sam_vit_h
-    python dataset/download_checkpoints.py --model medsam_vit_b
+    python dataset/prepare_sam_checkpoints.py --model sam_vit_b
+    python dataset/prepare_sam_checkpoints.py --model sam_vit_h
+    python dataset/prepare_sam_checkpoints.py --model medsam_vit_b
 """
 
 import os

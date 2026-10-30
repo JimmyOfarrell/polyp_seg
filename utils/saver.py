@@ -90,6 +90,11 @@ class Saver:
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
             print("[SAVER] Continuing with local logging only.", '\n')   
                
+    def create_best_csv(self, best_metric):
+        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
+        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
+        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
+
     def log_cmd(self, cmd):
         print(f"[SAVER] Command: {cmd}")
         self.writer.add_text('cmd', cmd, 0)
@@ -186,26 +191,61 @@ class Saver:
         print(f"[SAVER] Checkpoint saved: {path}")
         return path        
     
+    @torch.no_grad()
+    def save_batch(self, images, name, step, remove_batch_dim=True, subfolder='', cmap=None, normalize=False):
+        os.makedirs(os.path.join(self.vis_dir, subfolder), exist_ok=True)
+    
+        if remove_batch_dim:
+            images = images.squeeze(0)
+            if images.dim() == 2: images = images.unsqueeze(0)
+            elif images.dim() == 3 and images.shape[0] not in (1, 3): images = images.unsqueeze(1)
 
+        if normalize:
+            denom = images.max() - images.min() + 1e-8
+            images = (images - images.min()) / denom
+                
+        if cmap is not None:
+            if images.dim() == 4 and images.shape[1] == 1: images = images.squeeze(1)
+            elif images.dim() == 3 and images.shape[0] == 1: images = images.squeeze(0)
+            colormap = plt.get_cmap(cmap)
+            np_imgs = images.cpu().numpy()
+            color_imgs = colormap(np_imgs)
+            color_imgs = (color_imgs[..., :3] * 255).astype(np.uint8)
+            color_imgs = np.transpose(color_imgs, (0, 3, 1, 2)) if color_imgs.ndim == 4 else np.transpose(color_imgs, (2, 0, 1))
+            images = torch.from_numpy(color_imgs).float() / 255.0
+            
+        torchvision.utils.save_image(images, os.path.join(self.vis_dir, subfolder, f'{name}_{step}.png'))
+    
 
-    def save_data(self,data,name:str, subfolder:str = ''):
-        ''' Save generic data in experiment folder '''
+    def save_data(self,data,name, subfolder=''):
         os.makedirs(os.path.join(self.experiment_dir, subfolder), exist_ok=True)
         torch.save(data, os.path.join(self.experiment_dir, subfolder, f'{name}.pth'))
         
     def save_json(self, data, name: str, subfolder: str = ''):
-        ''' Save json data in experiment folder '''
-        os.makedirs(os.path.join(self.experiment_dir, subfolder), exist_ok=True)
-        with open(os.path.join(self.experiment_dir, subfolder, f'{name}.json'), 'w') as f:
-            json.dump(data, f, default=str, indent=2)
+        out_dir = os.path.join(self.experiment_dir, subfolder)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f'{name}.json')
+        def _sanitize(obj):
+            if isinstance(obj, float): return None if not np.isfinite(obj) else obj
+            if isinstance(obj, dict): return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)): return [_sanitize(x) for x in obj]
+            if isinstance(obj, np.floating): return None if not np.isfinite(float(obj)) else float(obj)
+            if isinstance(obj, (np.integer, np.bool_)): return obj.item()
+            return obj
+        with open(out_path, 'w', encoding='utf-8') as f: json.dump(_sanitize(data), f, default=str, indent=2, ensure_ascii=False)
+        print(f"[SAVER] JSON saved: {out_path}")
+        return out_path
         
     def log_histogram(self, name: str, values: torch.Tensor, iter_n: int):
-        '''
-        Log histogram to WB 
-        '''
-        data = [[s] for s in values]
-        table = wandb.Table(data=data, columns=[f"{name}"])
-        wandb.log({f'{name}_histogram': wandb.plot.histogram(table, f"{name}", title=f"{name} Histogram")})
+        if not self.wandb_enabled: return
+        try: 
+            data = [[float(s)] for s in values if np.isfinite(float(s))]
+            if len(data) == 0:
+                print(f"[SAVER] Skipping empty histogram: {name}")
+                return
+            table = wandb.Table(data=data, columns=[f"{name}"])
+            wandb.log({f'{name}_histogram': wandb.plot.histogram(table, f"{name}", title=f"{name} Histogram")}, step=iter_n)
+        except Exception as e: print(f"[SAVER] log_histogram '{name}' failed: {type(e).__name__}: {e}")    
         
                
 
@@ -232,36 +272,6 @@ class Saver:
     def log_text(self,title:str,text:str,step:int):
         self.writer.add_text(title,text,step)
 
-    
-
-           
-    def wb_mask(self, img, mask, gt):
-        return wandb.Image(img, masks={"ground_truth" : {"mask_data" : gt, 
-                                                        "class_labels" : {0: "background", 1: "mask"}},
-                                        "predictions": { "mask_data": mask+2, 
-                                                        "class_labels": {2: "background", 3: "mask"}}
-        })
-            
-    @torch.no_grad()
-    def log_slices(self, slices: torch.Tensor, masks: torch.Tensor, ground_truth: torch.tensor, step: int, name: str, phase: str):
-
-        assert len(slices.shape)==5, 'Missing dimension.'
-        assert slices.shape[1] == masks.shape[1] == ground_truth.shape[1]
-        assert slices.shape[-1] == masks.shape[-1] == ground_truth.shape[-1]
-        num_samples = slices.shape[0]
-        num_slices = slices.shape[-1]
-        s = slices.squeeze(1)
-        msk = masks.squeeze(1)
-        gt_in = ground_truth.squeeze(1)
-        for b in range(num_samples):
-            wandb_mask_logs = []
-            for idx in range(num_slices):
-                img = s[b, :, :, idx]
-                m = msk[b, :, : , idx]
-                gt = gt_in[b, :, :, idx]
-
-                wandb_mask_logs.append(self.wb_mask(img.cpu().numpy(), m.cpu().numpy(), gt.cpu().numpy()))
-            wandb.log({f"Segmentation/{phase}/{name}": wandb_mask_logs, 'step': step})
     
     @torch.no_grad()
     def save_images(self, images: torch.Tensor,masks: torch.Tensor, name: str, step: int):
@@ -290,26 +300,6 @@ class Saver:
         plt.savefig(os.path.join(self.vis_dir, name+'.png'))
 
         plt.close()
-        
-    @torch.no_grad()
-    def save_batch(self, images: torch.Tensor, name: str, step: int, remove_batch_dim: bool = True, subfolder: str = '', cmap = None, normalize = False):
-        
-        os.makedirs(os.path.join(self.vis_dir, subfolder), exist_ok=True)
-    
-        if remove_batch_dim:
-            images = images.squeeze(0)
-            if images.dim() == 3:
-                images = images.unsqueeze(1)
-        if normalize:
-            images = (images - images.min()) / (images.max() - images.min())
-                
-        if cmap is not None:
-            colormap = plt.get_cmap(cmap)
-            np_imgs = images.cpu().numpy()
-            color_imgs = colormap(np_imgs)
-            images = torch.from_numpy(color_imgs).permute(0, 3, 1, 2)
-            
-        torchvision.utils.save_image(images, os.path.join(self.vis_dir, subfolder, f'{name}_{step}.png'))
         
     
     def create_table(self, columns=None):
@@ -380,8 +370,7 @@ class Saver:
                              matching the columns in self.columns (excluding "Step").
         """
         # Ensure the table is created
-        if self.metrics_table is None or self.columns is None:
-            raise RuntimeError("You must call create_table(...) before logging metrics.")
+        if self.metrics_table is None or self.columns is None: raise RuntimeError("You must call create_table(...) before logging metrics.")
 
         # Build row data in the same order as self.columns
         row_data = []
@@ -405,5 +394,7 @@ class Saver:
         self.metrics_table.add_data(*row_data)
         
         # Log/update in W&B
-        wandb.log({"metrics_table": self.metrics_table, "EPOCH": step})
+        if self.wandb_enabled:
+            try: wandb.log({"metrics_table": self.metrics_table, "EPOCH": step}, step=step)
+            except Exception as e: print(f"[SAVER] log_table_row failed: {type(e).__name__}: {e}")
         

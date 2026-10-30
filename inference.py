@@ -11,20 +11,17 @@ from torch.amp import autocast
 
 @torch.no_grad()
 def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
-
     pbar = tqdm(val_dataloader, desc=f"Val E{epoch}")
-
     model.eval()
     if sam is not None: sam.eval()
 
-    threshold  = args.get('threshold_discretize', 0.5)
-    include_bg = args.get('include_background', False)
-    use_std_net = args.get('use_standard_net', False)
+    threshold  = args['threshold_discretize']
+    include_bg = args['include_background']
+    use_standard_net = ['use_standard_net']
     net_name = args.get('net', 'HardNetSegmentor')
-    Idim = int(args.get('Idim', 512))
-    norm_mode = args.get('norm_mode', 'minmax')
-    image_key = args.get('image_key', 'image')
-    mask_key = args.get('mask_key', 'mask')
+    input_resolution = int(args['Idim'])
+    image_key, mask_key = args['image_key'], args['mask_key']
+    norm_mode = args['norm_mode']
     use_amp = args.get('use_cuda_amp', False) and torch.cuda.is_available()
 
     one_hot     = AsDiscrete(to_onehot=2, dim=1)     
@@ -35,14 +32,14 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
     diceMetric_false = DiceMetric(include_background=False, reduction='mean')
     iouMetric = MeanIoU(include_background=include_bg, reduction='mean')
     
-    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_std_net)
+    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_standard_net)
 
     criterion_name = args.get('criterion', 'dice_ce')
     if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'.")
 
-    if use_std_net:
+    if use_standard_net:
         finetune_bb = args.get('segmentor_finetune_backbone', False)
         phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
     else: phase_str = "1 (SAM-guided)"
@@ -65,15 +62,16 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
 
         with autocast('cuda', enabled=use_amp):
             if sam is not None:
-                orig_imgs_small = F.interpolate(orig_imgs, size=(Idim, Idim), mode='bilinear', align_corners=False)
+                orig_imgs_small = F.interpolate(orig_imgs, size=(input_resolution, input_resolution), mode='bilinear', align_corners=False)
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz_batch, img_sz)
                 masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
             else: masks = model(orig_imgs)
+
             size = masks.shape[2:]
             gts_resized = F.interpolate(gts, size=size, mode='nearest')
-
             onehot_gts = one_hot(post_trans(gts_resized))
+            
             if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
             elif masks.shape[1] == 2:
                 probs = sigmoid(masks) if apply_sigm else masks

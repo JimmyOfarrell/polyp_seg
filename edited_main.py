@@ -20,72 +20,64 @@ from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main(args=None, sam_args=None, saver=None):
-    device = args['device']
+    requested_device = args['device']
+    requested_cuda_amp = args['use_cuda_amp']
     cuda_available = torch.cuda.is_available()
-    use_cuda_amp_requested = args['use_cuda_amp']
-    use_cuda_amp = args['use_cuda_amp']
+    
     use_sam = args['use_sam']
     disable_bn = args['disable_batchnorm_running_stats']
     num_epochs = int(args['epochs'])
 
     print("[MAIN] Device configuration:")
-    if str(device).lower() == 'cuda':
-        if not cuda_available:
-            print(f"[WARNING] CUDA requested but not available. Falling back to CPU.")
-            device = args['device'] = torch.device("cpu")
-            print(f"[MAIN] Device         : CPU")
-            print(f"[MAIN] PyTorch version: {torch.__version__}")
-            if use_sam:
-                print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow! Consider using a GPU for training.")
-            if use_cuda_amp:
-                print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
-                use_cuda_amp = args['use_cuda_amp'] = False
-        else:
-            num_gpus = torch.cuda.device_count()
-            device_id = int(args['device_id'])
-            if device_id >= num_gpus or device_id < 0:
-                print(f"[WARNING] device_id={device_id} is out of range (only {num_gpus} GPU(s) available). Using device 0.")
-                device_id = 0
-                args['device_id'] = 0    
-            device = args['device'] = torch.device(f"cuda:{device_id}")
-            torch.cuda.set_device(device_id) 
+    if str(requested_device).lower() == 'cuda' and cuda_available:
+        num_gpus = torch.cuda.device_count()
+        device_id = int(args['device_id'])
 
-            gpu_name = torch.cuda.get_device_name(device_id)
-            gpu_props = torch.cuda.get_device_properties(device_id)
-            total_vram_gb = gpu_props.total_memory / (1024**3)
+        if device_id >= num_gpus or device_id < 0:
+            print(f"[WARNING] device_id={device_id} is out of range (only {num_gpus} GPU(s) available). Using device 0.")
+            device_id = 0
+            args['device_id'] = 0 
+              
+        args['device'] = torch.device(f"cuda:{device_id}")
+        torch.cuda.set_device(device_id) 
 
-            print(f"[MAIN] Device            : {args['device']}")
-            print(f"[MAIN] GPU name          : {gpu_name}")
-            print(f"[MAIN] Total VRAM        : {total_vram_gb:.2f} GB")
-            print(f"[MAIN] CUDA version      : {torch.version.cuda}")
-            print(f"[MAIN] PyTorch version   : {torch.__version__}")
+        gpu_name = torch.cuda.get_device_name(device_id)
+        gpu_props = torch.cuda.get_device_properties(device_id)
+        total_vram_gb = gpu_props.total_memory / (1024**3)
+        cc = (gpu_props.major, gpu_props.minor)
+        print(f"[MAIN] Compute capability: {cc[0]}.{cc[1]}")
 
-            cc = (gpu_props.major, gpu_props.minor)
-            print(f"[MAIN] Compute capability: {cc[0]}.{cc[1]}")
+        print(f"[MAIN] Device            : {args['device']}")
+        print(f"[MAIN] GPU name          : {gpu_name}")
+        print(f"[MAIN] Total VRAM        : {total_vram_gb:.2f} GB")
+        print(f"[MAIN] CUDA version      : {torch.version.cuda}")
+        print(f"[MAIN] PyTorch version   : {torch.__version__}")
 
-            if cc < (6, 0): print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 6.0. Mixed precision (AMP) may not work properly.")
-            if cc < (7, 0) and use_cuda_amp: print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 7.0. Tensor Cores not available; AMP will be limited.")
+        if cc < (6, 0): print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 6.0. Mixed precision (AMP) may not work properly.")
+        if cc < (7, 0) and requested_cuda_amp: print(f"[WARNING] GPU compute capability {cc[0]}.{cc[1]} is below 7.0. Tensor Cores not available; AMP will be limited.")
 
-            try:
-                free_vram, total_vram = torch.cuda.mem_get_info(device_id)
-                free_vram_gb = free_vram / (1024**3)
-                print(f"[MAIN] Free VRAM     : {free_vram_gb:.2f} GB")
+        try:
+            free_vram, total_vram = torch.cuda.mem_get_info(device_id)
+            free_vram_gb = free_vram / (1024**3)
+            print(f"[MAIN] Free VRAM     : {free_vram_gb:.2f} GB")
             
-                if use_sam and free_vram_gb < 8:
-                    print(f"[WARNING] Free VRAM ({free_vram_gb:.2f} GB) may be insufficient for Phase 1 with SAM (ViT-B). Consider:")
-                    print(f"         - Smaller batch size (-bs)")
-                    print(f"         - Using --use_cuda_amp True")
-                    print(f"         - Already using smallest SAM (vit_b); reduce batch size instead")
-            except Exception: print(f"[WARNING] Could not query VRAM: {type(e).__name__}: {e}") 
+            if use_sam and free_vram_gb < 8:
+                print(f"[WARNING] Free VRAM ({free_vram_gb:.2f} GB) may be insufficient for Phase 1 with SAM (ViT-B). Consider:")
+                print(f"         - Smaller batch size (-bs)")
+                print(f"         - Using --use_cuda_amp True")
+                print(f"         - Already using smallest SAM (vit_b); reduce batch size instead")
+        except Exception as e: print(f"[WARNING] Could not query VRAM: {type(e).__name__}: {e}") 
     else:
-        device = args['device'] = torch.device("cpu")
+        if str(requested_device).lower() == 'cuda' and not cuda_available: print(f"[WARNING] CUDA requested but not available. Falling back to CPU.")
+        args['device'] = torch.device("cpu")
         print(f"[MAIN] Device         : CPU")
         print(f"[MAIN] PyTorch version: {torch.__version__}")
-        if use_sam:
-            print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow! Consider using a GPU for training.")
-        if use_cuda_amp:
+        if use_sam: print(f"[WARNING] Running Phase 1 with SAM on CPU will be extremely slow! Consider using a GPU for training.")
+        if requested_cuda_amp:
             print(f"[WARNING] AMP is enabled but device is CPU. Disabling AMP.")
-            use_cuda_amp = args['use_cuda_amp'] = False
+            args['use_cuda_amp'] = False
+    device = args['device']
+    use_cuda_amp = args['use_cuda_amp']
     print()
 
     if use_sam:
@@ -264,13 +256,14 @@ def main(args=None, sam_args=None, saver=None):
         else: print("[MAIN] --wandb_watch requested but W&B disabled — skipping.", '\n')
         
     best = -1.0
-    metric_name = args['best_metric']                      
-    print(f"[MAIN] Tracking best model by '{metric_name}' in: {saver.best_csv_file}")
+    best_metric_name = args['best_metric']  
+    saver.create_best_csv(best_metric_name)                    
+    print(f"[MAIN] Tracking best model by '{best_metric_name}' in: {saver.best_csv_file}")
 
     device_is_cuda = getattr(args['device'], 'type', 'cpu') == 'cuda'
     use_amp = bool(use_cuda_amp) and cuda_available and device_is_cuda
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
-    print(f"[MAIN] AMP enabled: {use_amp} (requested={use_cuda_amp_requested}, cuda_available={cuda_available}, device={device})", '\n')
+    print(f"[MAIN] AMP enabled: {use_amp} (requested={requested_cuda_amp}, cuda_available={cuda_available}, device={device})", '\n')
 
     for epoch in range(num_epochs):
         avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler, use_amp)
@@ -292,7 +285,7 @@ def main(args=None, sam_args=None, saver=None):
 
             if best_metric_name == 'dice_f': metric = dice_false
             elif best_metric_name == 'dice_t': metric = dice_true
-            elif best_metric_name == 'IoU': metric = iou_val
+            elif best_metric_name == 'iou': metric = iou_val
             else: raise ValueError(f"Unsupported best_metric '{best_metric_name}'. Choose from: 'dice_f', 'dice_t', 'IoU'.")
                     
             if metric > best:
@@ -352,7 +345,7 @@ For usage examples, see README.md
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
-    parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample', 'UnetLike'], help='Aggregator head')
+    parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample'], help='Aggregator head')
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
