@@ -48,7 +48,6 @@ class Saver:
         print(f"[SAVER] Checkpoint directory created: {self.ckpt_dir}")
         print(f"[SAVER] Visualization directory created: {self.vis_dir}\n")
 
-        input('stop')
 
         try:
             wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
@@ -67,7 +66,7 @@ class Saver:
                 print(f"[SAVER] {'Run ID':<14}: {self.wandb_run_id}")
                 print(f"[SAVER] {'Local Dir':<14}: {self.wandb_run_dir}")
                 print(f"[SAVER] {'Project URL':<14}: {self.wandb_project_url}")
-                print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}", '\n')
+                print(f"[SAVER] {'Run URL':<14}: {self.wandb_run_url}\n")
 
                 self.wandb_info = {'project_name': self.wandb_project,
                                    'run_name': self.experiment_name,
@@ -76,12 +75,12 @@ class Saver:
                                    'project_url': self.wandb_project_url,
                                    'run_url': self.wandb_run_url}
 
-            else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}", '\n')
+            else: print(f"[SAVER] W&B logging inactive | mode={self.wandb_mode}\n")
         except Exception as e:
             self.wandb_enabled = False
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
-            print("[SAVER] Continuing with local logging only.", '\n')   
+            print(f"[SAVER] Continuing with local logging only.\n")   
                
     def create_best_csv(self, best_metric):
         self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
