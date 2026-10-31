@@ -1,5 +1,7 @@
 import argparse
 import os
+import sys
+import shlex
 from utils.utils import str2bool, set_seed
 from utils.saver import Saver
 
@@ -39,3 +41,12 @@ For usage examples, see README.md
 
     output_root = os.path.join(PROJECT_DIR, 'results')
     saver = Saver(output_folder=output_root, args=args)
+    cmd = f"{sys.executable} " + " ".join(shlex.quote(arg) for arg in sys.argv)
+    saver.log_cmd(cmd)
+
+    args['exp_folder'] = saver.experiment_dir
+    args['last_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_last.pth')
+    args['best_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_best.pth')
+    args['vis_folder'] = saver.vis_dir
+    args['wandb_info'] = saver.wandb_info
+    print('stop')

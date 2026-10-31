@@ -1,16 +1,15 @@
 import os
 import csv
+import wandb
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
-from pathlib import Path
 import torch
 import torchvision
 
 import numpy as np 
 import matplotlib.pyplot as plt
 
-import wandb
 import json
 
 
@@ -27,6 +26,8 @@ class Saver:
         self.wandb_enabled = False
         self.wandb_run = self.wandb_run_id = self.wandb_run_dir = self.wandb_project_url = self.wandb_run_url = self.wandb_info = None
          
+        self.best_csv_file = None
+
         os.makedirs(output_folder, exist_ok=True)
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.experiment_dir = os.path.join(output_folder, f'run-{timestamp_str}-{self.experiment_name}')
@@ -80,11 +81,6 @@ class Saver:
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
             print(f"[SAVER] Continuing with local logging only.\n")   
-        input('stop')       
-    def create_best_csv(self, best_metric):
-        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
-        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
-        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
 
     def log_cmd(self, cmd):
         print(f"[SAVER] Command: {cmd}")
@@ -93,11 +89,20 @@ class Saver:
 
         out_path = os.path.join(self.experiment_dir, 'cmd.json')
         with open(out_path, 'w', encoding='utf-8') as fp: json.dump({'cmd': cmd}, fp, indent=2, ensure_ascii=False)
-        print(f"[SAVER] Command saved: {out_path}", '\n')
+        print(f"[SAVER] Command saved: {out_path}\n")
 
         try:
             if getattr(self, 'wandb_enabled', False) and self.wandb_run is not None: self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
-        except Exception as e: print(f"[SAVER] WARNING: wandb.config.update('cmd') failed: {type(e).__name__}: {e}", '\n')
+        except Exception as e: print(f"[SAVER] WARNING: wandb.config.update('cmd') failed: {type(e).__name__}: {e}\n")          
+
+
+
+    def create_best_csv(self, best_metric):
+        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
+        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
+        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
+        return self.best_csv_file
+
     
     def log_hparams(self,params_dict):
         hparams_str = json.dumps(params_dict, indent=2, default=str, ensure_ascii=False)

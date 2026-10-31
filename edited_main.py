@@ -355,16 +355,7 @@ if __name__ == '__main__':
     
 
     
-    
 
-    cmd = f"{sys.executable} " + " ".join(shlex.quote(arg) for arg in sys.argv)
-    saver.log_cmd(cmd)
-
-    args['exp_folder'] = saver.experiment_dir
-    args['last_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_last.pth')
-    args['best_ckpt_path'] = os.path.join(saver.ckpt_dir, 'net_best.pth')
-    args['vis_folder'] = saver.vis_dir
-    args['wandb_info'] = saver.wandb_info
 
     if args['use_sam']:
         sam_ckpt = os.path.join(PROJECT_DIR, 'cp', f"{args['sam_ckpt']}.pth")
