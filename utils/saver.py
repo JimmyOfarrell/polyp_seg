@@ -1,6 +1,7 @@
 import os
 import csv
 import wandb
+import json
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
@@ -9,8 +10,6 @@ import torchvision
 
 import numpy as np 
 import matplotlib.pyplot as plt
-
-import json
 
 
 
@@ -95,22 +94,12 @@ class Saver:
             if getattr(self, 'wandb_enabled', False) and self.wandb_run is not None: self.wandb_run.config.update({'cmd': cmd}, allow_val_change=True)
         except Exception as e: print(f"[SAVER] WARNING: wandb.config.update('cmd') failed: {type(e).__name__}: {e}\n")          
 
-
-
-    def create_best_csv(self, best_metric):
-        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
-        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
-        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
-        return self.best_csv_file
-
-    
     def log_hparams(self,params_dict):
-        hparams_str = json.dumps(params_dict, indent=2, default=str, ensure_ascii=False)
-            
+        hparams_str = json.dumps(params_dict, indent=2, default=str, ensure_ascii=False)      
         try:
             self.writer.add_text("hparams", hparams_str, 0)
             self.writer.flush()
-        except Exception as e: print(f"[WARNING] TensorBoard hyperparameter logging failed: {type(e).__name__}: {e}",)
+        except Exception as e: print(f"[WARNING] TensorBoard hyperparameter logging failed: {type(e).__name__}: {e}")
 
         if self.wandb_enabled and self.wandb_run is not None:
             try: self.wandb_run.config.update(params_dict, allow_val_change=True)
@@ -122,7 +111,15 @@ class Saver:
         try:
             with open(out_path, 'w', encoding='utf-8') as fp: json.dump(params_dict, fp, indent=2, default=str, ensure_ascii=False)
         except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
-        print()       
+        print()
+
+
+    def create_best_csv(self, best_metric):
+        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
+        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
+        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
+        return self.best_csv_file
+       
 
     def log_best(self, epoch, best_value):
         with open(self.best_csv_file, 'a', encoding='utf-8', newline='') as f:

@@ -1,17 +1,15 @@
+import torch.nn as nn
 import argparse
 import random
 import numpy as np
 import torch
-
-
-
-
 from monai.utils import set_determinism
+
+
 
 import os
 import torch.nn.functional as F
 
-import torch.nn as nn
  
 def disable_batchnorm_running_stats(model):
     count = 0
