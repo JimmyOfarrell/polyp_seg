@@ -151,7 +151,6 @@ def main(args=None, sam_args=None, saver=None):
             scenario = args['single_scenario']
             stage = None
             scenario_label = f"Single S{scenario}"
-            scenario = args['two_stage_scenario']
 
         else:
             scenario = args['two_stage_scenario']
@@ -223,7 +222,7 @@ def main(args=None, sam_args=None, saver=None):
     sam_params = sum(p.numel() for p in sam.parameters()) if sam is not None else 0
 
     if scenario_header is not None:
-        print(f"[MAIN] Phase 2 — Two-Stage T{scenario}, Stage {stage}")
+        print(f"[MAIN] {phase_label}")
         print(f"[MAIN]   ─────────────────────────────────")
         print(f"[MAIN]   PL (backbone+decoder) : {scenario_header['pl_status']}")
         print(f"[MAIN]   Aggregator            : trainable")
