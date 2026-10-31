@@ -41,10 +41,6 @@ class Saver:
         with open(self.metrics_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['metric', 'epoch', 'value'])
         print(f"[SAVER] Metrics CSV created: {self.metrics_csv_file}")
 
-        self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
-        with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', args['best_metric']])
-        print(f"[SAVER] Best CSV created: {self.best_csv_file}")
-
         self.ckpt_dir = os.path.join(self.experiment_dir, 'ckpt')
         self.vis_dir  = os.path.join(self.experiment_dir, 'vis')
         os.makedirs(self.ckpt_dir, exist_ok=True)
