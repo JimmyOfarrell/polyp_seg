@@ -18,7 +18,6 @@ import numpy as np
 from utils.utils import get_input_dict, norm_batch
 from monai.transforms import AsDiscrete, Activations
 from monai.metrics import DiceMetric, MeanIoU, ConfusionMatrixMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
-from dataset.polyp_dataset import get_test_mslesseg_dataset
 from utils.model_utils import get_model, sam_call, get_standard_model
 from utils.metrics_utils import stratified_lesion_analysis, compute_lesionwise_metrics
 
@@ -227,14 +226,14 @@ def inference_dataloader(test_dataloader, model, sam, device, epoch, args, saver
             metrics_list_include_background[m].append(metrics_true[i].item())
             metrics_list_exclude_background[m].append(metrics_false[i].item())
                 
-        pbar.set_description(
-            '(Inference | {task}) Epoch {epoch} :: Dice True {dice_true:.4f} :: Dice False {dice_false:.4f} :: IoU True {iou_true:.4f} :: IoU False {iou_false:.4f}'.format(
-                task=args['task'],
-                epoch=epoch,
-                dice_true=np.mean(dice_list_include_background),
-                dice_false=np.mean(dice_list_exclude_background),
-                iou_true=np.mean(iou_list_include_background), 
-                iou_false=np.mean(iou_list_exclude_background)))
+        pbar.set_description(f'(test | polyp) :: '
+                             f'DiceInc {np.nanmean(dice_list_include_background):.4f} :: '
+                             f'DiceExc {np.nanmean(dice_list_exclude_background):.4f} :: '
+                             f'IoUInc {np.nanmean(iou_list_include_background):.4f} :: '
+                             f'IoUExc {np.nanmean(iou_list_exclude_background):.4f} :: '
+                             f'HD95Exc {np.nanmean(hd95_list_exclude_background):.4f} :: '
+                             f'ASDExc {np.nanmean(surface_distance_list_exclude_background):.4f} :: '
+                             f'MAE {np.nanmean(mae_list):.4f}')
         
         iou_metric_include_background.reset()
         iou_metric_exclude_background.reset()
@@ -463,6 +462,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_embeddings', type=str2bool, default=True, help='Save embeddings') 
     parser.add_argument('--save_tensors', type=str2bool, default=False, help='If save the tensors of imgs, prediciton and gts of all the samples during test')
     parser.add_argument('--save_test_images', type=str2bool, default=True, help='Save images')
+    parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
 
     
     parser.add_argument('-rotate', '--rotate', default=22, help='image size', required=False)

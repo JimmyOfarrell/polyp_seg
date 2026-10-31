@@ -1,3 +1,8 @@
+import os
+import csv
+from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
+
 from pathlib import Path
 import torch
 import torchvision
@@ -5,12 +10,9 @@ import torchvision
 import numpy as np 
 import matplotlib.pyplot as plt
 
-import os
-import csv
 import wandb
 import json
-from datetime import datetime
-from torch.utils.tensorboard import SummaryWriter
+
 
 
 class Saver:
@@ -19,8 +21,13 @@ class Saver:
         self.wandb_mode, self.wandb_project, self.wandb_entity = args['wandb_mode'], args['wandb_project'], args['wandb_entity']
         self.wandb_tags = args['wandb_tags']
         if self.wandb_mode not in {"online", "offline", "disabled"}: raise ValueError(f"Unsupported wandb_mode: {self.wandb_mode!r}")
-        os.makedirs(output_folder, exist_ok=True)
 
+        self.metrics_table, self.columns, self.rows = None, None, []
+
+        self.wandb_enabled = False
+        self.wandb_run = self.wandb_run_id = self.wandb_run_dir = self.wandb_project_url = self.wandb_run_url = self.wandb_info = None
+         
+        os.makedirs(output_folder, exist_ok=True)
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.experiment_dir = os.path.join(output_folder, f'run-{timestamp_str}-{self.experiment_name}')
         os.makedirs(self.experiment_dir, exist_ok=True)
@@ -43,19 +50,9 @@ class Saver:
         os.makedirs(self.ckpt_dir, exist_ok=True)
         os.makedirs(self.vis_dir,  exist_ok=True)
         print(f"[SAVER] Checkpoint directory created: {self.ckpt_dir}")
-        print(f"[SAVER] Visualization directory created: {self.vis_dir}", '\n')
-        
-        self.metrics_table = None
-        self.columns = None
-        self.rows = []
-        
-        self.wandb_enabled = False
-        self.wandb_run = None
-        self.wandb_run_id = None
-        self.wandb_run_dir = None
-        self.wandb_project_url = None
-        self.wandb_run_url = None
-        self.wandb_info = None
+        print(f"[SAVER] Visualization directory created: {self.vis_dir}\n")
+
+        input('stop')
 
         try:
             wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
@@ -68,7 +65,7 @@ class Saver:
                 self.wandb_project_url = self.wandb_run.project_url
                 self.wandb_run_url = self.wandb_run.url
 
-                print("[SAVER] Weights & Biases (W&B) Initialized:")
+                print(f"[SAVER] Weights & Biases (W&B) Initialized:")
                 print(f"[SAVER] {'Project Name':<14}: {self.wandb_project}")
                 print(f"[SAVER] {'Run Name':<14}: {self.experiment_name}")
                 print(f"[SAVER] {'Run ID':<14}: {self.wandb_run_id}")

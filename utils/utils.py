@@ -1,4 +1,7 @@
 import argparse
+import random
+import numpy as np
+import torch
 
 
 
@@ -9,9 +12,6 @@ import os
 import torch.nn.functional as F
 
 import torch.nn as nn
-import random
-import numpy as np
-import torch
  
 def disable_batchnorm_running_stats(model):
     count = 0
@@ -30,7 +30,6 @@ def str2bool(v):
         v_lower = v.strip().lower()
         if v_lower in ('yes', 'true', 't', 'y', '1', 'on'): return True
         elif v_lower in ('no', 'false', 'f', 'n', '0', 'off'): return False
-
     raise argparse.ArgumentTypeError(f'Boolean value expected, got {v!r} of type {type(v).__name__}')
 
 def set_seed(seed, strict=False):
@@ -39,21 +38,19 @@ def set_seed(seed, strict=False):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
     set_determinism(seed=seed, use_deterministic_algorithms=strict)
-
     if strict:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         try: torch.use_deterministic_algorithms(True, warn_only=True)
         except TypeError: torch.use_deterministic_algorithms(True)
-        print(f"[set_seed] Strict determinism enabled (seed={seed}). Training may be slower.", '\n') 
+        print(f"[set_seed] Strict determinism enabled (seed={seed}). Training may be slower.\n") 
     else:
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
         try: torch.use_deterministic_algorithms(False)  
         except Exception as e: print(f"[set_seed] Warning: could not disable deterministic algorithms: {e}")
-        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).", '\n')           
+        print(f"[set_seed] Fast non-deterministic mode (seed={seed}).\n")           
 
 def get_input_dict(imgs, original_sz, img_sz, point_coords=None, point_labels=None, boxes=None, mask_inputs=None):
     batched_input = []

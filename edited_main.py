@@ -17,8 +17,6 @@ from utils.model_utils import get_model, get_standard_model
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 def main(args=None, sam_args=None, saver=None):
     requested_device = args['device']
     requested_cuda_amp = args['use_cuda_amp']
@@ -299,29 +297,8 @@ def main(args=None, sam_args=None, saver=None):
     print(f"[MAIN] ✓ Training complete. Best metric: {best:.4f}")
     
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="""
-============================================================
-            POLYP SEGMENTATION FRAMEWORK
-============================================================
-Method : SAM-Guided Prompt Learning for Polyp Segmentation
-Task   : Automated Polyp Segmentation
-Input  : Colonoscopy RGB Images (2D)
-Output : Binary Polyp Segmentation Masks
-============================================================
-
-This framework leverages Segment Anything Model (SAM) during 
-training to guide a dense prompt learner. At inference, SAM 
-is replaced by a lightweight aggregator for efficient deployment.
-
-For usage examples, see README.md
-============================================================\n""", formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
-    parser.add_argument('--strict_determinism', type=str2bool, default=False, help='Enable strict determinism (slower but reproducible). Use True for final thesis experiments.')
-    parser.add_argument('--exp_name', required=True, help='Experiment name (required)')
-    parser.add_argument('--wandb_mode', default='online', choices=['online', 'offline', 'disabled'], help='WandB mode')
-    parser.add_argument('--wandb_project', default='SGPL_Polyp_Seg', help='WandB project name')
-    parser.add_argument('--wandb_entity', default=None, help='WandB entity (username or team)')
-    parser.add_argument('--wandb_tags', type=str, nargs='+', default=[], help='Wandb tags')
+    
+    
     parser.add_argument('--best_metric', type=str, default='dice_f', choices=['dice_f', 'dice_t', 'iou'], help='Best metric')
     parser.add_argument('--use_sam', type=str2bool, default=True, help='Use SAM (phase 1) vs aggregator only (phase 2)')
     parser.add_argument('--sam_ckpt', type=str, default='sam_vit_b', choices = ['sam_vit_b', 'medsam_vit_b', 'sam_vit_h'], help='SAM checkpoint')
@@ -375,18 +352,11 @@ For usage examples, see README.md
     parser.add_argument('--acc_steps', type=int, default=2, help='Gradient accumulation steps')
     parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save validation images to WandB')
     parser.add_argument('--save_every', type=int, default=10, help='Save net_last checkpoint every N epochs (also saves at last epoch)')
-    args = vars(parser.parse_args())
-    print(parser.description)
+    
 
-    print('='*120)
-    seed = args['seed']
-    strict = args['strict_determinism']
-    set_seed(seed=seed, strict=strict)
+    
+    
 
-    args['experiment_name']= args['exp_name']
-    output_root = os.path.join(PROJECT_DIR, 'results')
-
-    saver = Saver(output_folder=output_root, args=args)
     cmd = f"{sys.executable} " + " ".join(shlex.quote(arg) for arg in sys.argv)
     saver.log_cmd(cmd)
 
