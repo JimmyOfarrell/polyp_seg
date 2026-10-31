@@ -109,11 +109,147 @@ def main(args=None, sam_args=None, saver=None):
     model_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_memory_mb = sum(p.numel() * p.element_size() for p in model.parameters()) / (1024**2)
 
-    print(f"[MAIN] Model Parameters      : {model_params:,}")
+    print(f"\n[MAIN] Model Parameters      : {model_params:,}")
     print(f"[MAIN] Trainable Parameters  : {model_trainable_params:,}")
     print(f"[MAIN] Model Memory          : {model_memory_mb:.2f} MB")
     print(f"[MAIN] Model on device       : {device}\n")
-    if disable_bn: disable_batchnorm_running_stats(model)          
+    if disable_bn: disable_batchnorm_running_stats(model)
+
+    TWO_STAGE_CONFIGS = {
+        1: {
+            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
+            2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
+        },
+
+        2: {
+            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
+            2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
+        },
+       
+        3: {
+            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
+            2: {'trainable': 'aggregator', 'sam_loaded': False, 'loss': 'gt'},
+        },
+     
+        4: {
+            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
+            2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
+        },
+        
+        5: {
+            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
+            2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
+        },
+    }
+
+    if not use_sam:
+        scenario = args['two_stage_scenario']
+        stage = args['stage']
+        config = TWO_STAGE_CONFIGS[scenario][stage]
+        loss_desc = {'gt':    'l(p, gt)', 'sam':   'l(p, sam_out)', 'mixed': f'l(p, gt_sam)  [alpha={args["distill_weight"]}]'}[config['loss']]
+        pl_status = 'frozen' if config['trainable'] == 'aggregator' else 'trainable'
+   
+        args['sam_loaded'] = config['sam_loaded']
+        args['loss_type'] = config['loss']
+        args['trainable_scope'] = config['trainable']
+        args['current_stage'] = stage
+        args['current_scenario'] = scenario
+    
+        if config['trainable'] == 'aggregator':
+            for param in model.parameters(): param.requires_grad = False
+            for param in model.segmentor.parameters(): param.requires_grad = True
+            params_to_optimize = list(model.segmentor.parameters())
+        else:
+            for param in model.parameters(): param.requires_grad = True
+            params_to_optimize = list(model.parameters())
+    else:
+        for param in model.parameters(): param.requires_grad = True
+        params_to_optimize = list(model.parameters())
+        config = None
+        scenario = None
+        stage = None
+        pl_status = None
+        loss_desc = None
+        args['sam_loaded'] = True
+        args['loss_type'] = 'gt'
+        args['trainable_scope'] = 'all'         
+   
+    n_total     = sum(p.numel() for p in model.parameters())
+    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_frozen    = n_total - n_trainable
+    train_ratio = 100.0 * n_trainable / max(n_total, 1)
+
+    bytes_per_param = next(model.parameters()).element_size()
+    param_mem_mb = n_total * bytes_per_param / (1024**2)
+    grad_mem_mb  = n_trainable * bytes_per_param / (1024**2)
+
+    n_tensors_trainable = sum(1 for p in model.parameters() if p.requires_grad)
+    n_tensors_total     = sum(1 for p in model.parameters())
+
+    devices = {str(p.device) for p in model.parameters()}
+    dtypes  = {str(p.dtype).replace('torch.','') for p in model.parameters()}
+
+    n_bb_tr  = sum(p.numel() for p in model.backbone.parameters() if p.requires_grad) if hasattr(model, 'backbone') else 0
+    n_bb     = sum(p.numel() for p in model.backbone.parameters()) if hasattr(model, 'backbone') else 0
+    n_dec_tr = sum(p.numel() for p in model.decoder.parameters() if p.requires_grad) if hasattr(model, 'decoder') else 0
+    n_dec    = sum(p.numel() for p in model.decoder.parameters()) if hasattr(model, 'decoder') else 0
+    n_seg_tr = sum(p.numel() for p in model.segmentor.parameters() if p.requires_grad) if getattr(model, 'segmentor', None) is not None else 0
+    n_seg    = sum(p.numel() for p in model.segmentor.parameters()) if getattr(model, 'segmentor', None) is not None else 0
+
+    if use_sam:
+        phase_label = 'Phase 1 (SAM-guided)'
+        scenario_header = None
+    else:
+        phase_label = f"Phase 2 — Two-Stage T{scenario}, Stage {stage}"
+        scenario_header = {
+            'pl_status': pl_status,
+            'sam_loaded': config['sam_loaded'],
+            'loss_desc': loss_desc,
+        }
+
+    sam_params = sum(p.numel() for p in sam.parameters()) if sam is not None else 0
+
+    if scenario_header is not None:
+        print(f"[MAIN] Phase 2 — Two-Stage T{scenario}, Stage {stage}")
+        print(f"[MAIN]   ─────────────────────────────────")
+        print(f"[MAIN]   PL (backbone+decoder) : {scenario_header['pl_status']}")
+        print(f"[MAIN]   Aggregator            : trainable")
+        print(f"[MAIN]   SAM loaded (frozen)   : {'Yes' if scenario_header['sam_loaded'] else 'No'}")
+        print(f"[MAIN]   Loss                  : {scenario_header['loss_desc']}")
+        print(f"[MAIN]   Trainable params      : {n_trainable:,} / {n_total:,} ({100*n_trainable/max(n_total,1):.2f}%)")
+        print()
+
+    print("[MAIN] Parameter Optimization Summary:")
+    print("-" * 58)
+    print(f"{'Property':<22} | {'Value'}")
+    print("-" * 58)
+    print(f"{'Phase':<22} | {phase_label}")
+    print(f"{'Model type':<22} | {type(model).__name__}")
+    print(f"{'Total params':<22} | {n_total:,} ({n_total/1e6:.2f}M)")
+    print(f"{'Trainable params':<22} | {n_trainable:,} ({n_trainable/1e6:.2f}M)")
+    print(f"{'Frozen params':<22} | {n_frozen:,} ({n_frozen/1e6:.2f}M)")
+    print(f"{'Trainable ratio':<22} | {train_ratio:.2f}%")
+    print(f"{'Trainable tensors':<22} | {n_tensors_trainable} / {n_tensors_total}")
+    print("-" * 58)
+    if n_bb:  print(f"{'Backbone (HarDNet)':<28} | {n_bb_tr:,} / {n_bb:,} ({100.0*n_bb_tr/max(n_bb,1):.1f}%)")
+    if n_dec: print(f"{'Decoder (SmallDecoder)':<28} | {n_dec_tr:,} / {n_dec:,} ({100.0*n_dec_tr/max(n_dec,1):.1f}%)")
+    if n_seg: print(f"{'Aggregator':<28} | {n_seg_tr:,} / {n_seg:,} ({100.0*n_seg_tr/max(n_seg,1):.1f}%)")
+    print("-" * 58)
+    print(f"{'Param memory (fp32)':<22} | {param_mem_mb:.2f} MB")
+    print(f"{'Grad memory (fp32)':<22} | {grad_mem_mb:.2f} MB")
+    print(f"{'Total (param+grad)':<22} | {param_mem_mb + grad_mem_mb:.2f} MB")
+    print("-" * 58)
+    
+    if sam is not None:
+        sam_role = 'in forward pass' if use_sam else 'for pseudo-labels/auxiliary loss'
+        print(f"{'SAM (frozen, not in opt)':<22} | {sam_params:,} ({sam_params/1e6:.2f}M) — {sam_role}")
+        print("-" * 58)
+
+    print(f"{'Param devices':<22} | {devices}")
+    print(f"{'Param dtypes':<22} | {dtypes}")
+    print()
+
+    input('stop')          
           
 
 if __name__ == '__main__':
@@ -160,6 +296,10 @@ For usage examples, see README.md
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
+    parser.add_argument('--phase_2_mode', type=str, choices=['single', 'two_stage'], default='two_stage', help='Phase 2 structure: "single" or "two_stage"')
+    parser.add_argument('--two_stage_scenario', type=int, choices=[1, 2, 3, 4, 5], default=1, help='Two-stage scenario: T1(agg/SAM→all/GT), T2(agg/SAM→all/mixed), T3(agg/SAM→agg/GT), T4(agg/mixed→all/mixed), T5(agg/mixed→all/GT)')
+    parser.add_argument('--stage', type=int, choices=[1, 2], default=1, help='Current stage: 1 (distillation) or 2 (finetune)')
+    parser.add_argument('--distill_weight', type=float, default=0.5, help='Alpha weight for mixed loss: loss = alpha * l(p,sam) + (1-alpha) * l(p,gt)')
     
     print(parser.description)
     args = vars(parser.parse_args())
