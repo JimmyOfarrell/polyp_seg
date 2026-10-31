@@ -115,27 +115,30 @@ def main(args=None, sam_args=None, saver=None):
     print(f"[MAIN] Model on device       : {device}\n")
     if disable_bn: disable_batchnorm_running_stats(model)
 
+    SINGLE_CONFIGS = {
+    1: {'trainable': 'aggregator', 'sam_loaded': False, 'loss': 'gt'},
+    2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
+    3: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
+    4: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
+}
+
     TWO_STAGE_CONFIGS = {
         1: {
             1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
             2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
         },
-
         2: {
             1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
             2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
         },
-       
         3: {
             1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
             2: {'trainable': 'aggregator', 'sam_loaded': False, 'loss': 'gt'},
         },
-     
         4: {
             1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
             2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
         },
-        
         5: {
             1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
             2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
@@ -143,9 +146,19 @@ def main(args=None, sam_args=None, saver=None):
     }
 
     if not use_sam:
-        scenario = args['two_stage_scenario']
-        stage = args['stage']
-        config = TWO_STAGE_CONFIGS[scenario][stage]
+        if args['phase_2_mode'] == 'single':
+            config = SINGLE_CONFIGS[args['single_scenario']]
+            scenario = args['single_scenario']
+            stage = None
+            scenario_label = f"Single S{scenario}"
+            scenario = args['two_stage_scenario']
+
+        else:
+            scenario = args['two_stage_scenario']
+            stage = args['stage']
+            config = TWO_STAGE_CONFIGS[scenario][stage]
+            scenario_label = f"Two-stage T{scenario}, Stage {stage}"    
+        
         loss_desc = {'gt':    'l(p, gt)', 'sam':   'l(p, sam_out)', 'mixed': f'l(p, gt_sam)  [alpha={args["distill_weight"]}]'}[config['loss']]
         pl_status = 'frozen' if config['trainable'] == 'aggregator' else 'trainable'
    
@@ -200,7 +213,7 @@ def main(args=None, sam_args=None, saver=None):
         phase_label = 'Phase 1 (SAM-guided)'
         scenario_header = None
     else:
-        phase_label = f"Phase 2 — Two-Stage T{scenario}, Stage {stage}"
+        phase_label = f"Phase 2 — {scenario_label}"
         scenario_header = {
             'pl_status': pl_status,
             'sam_loaded': config['sam_loaded'],
@@ -300,6 +313,7 @@ For usage examples, see README.md
     parser.add_argument('--two_stage_scenario', type=int, choices=[1, 2, 3, 4, 5], default=1, help='Two-stage scenario: T1(agg/SAM→all/GT), T2(agg/SAM→all/mixed), T3(agg/SAM→agg/GT), T4(agg/mixed→all/mixed), T5(agg/mixed→all/GT)')
     parser.add_argument('--stage', type=int, choices=[1, 2], default=1, help='Current stage: 1 (distillation) or 2 (finetune)')
     parser.add_argument('--distill_weight', type=float, default=0.5, help='Alpha weight for mixed loss: loss = alpha * l(p,sam) + (1-alpha) * l(p,gt)')
+    parser.add_argument('--single_scenario', type=int, choices=[1, 2, 3, 4], default=2, help='[single mode] 1=agg/GT, 2=all/GT, 3=agg/mixed, 4=all/mixed')
     
     print(parser.description)
     args = vars(parser.parse_args())
