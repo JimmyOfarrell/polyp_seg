@@ -42,37 +42,23 @@ def get_model(args, backbone_weight_dir='', embedding_dim=256, use_tanh=True):
     print()        
     return model
 
-def sam_call(batched_input, sam, dense_embeddings):
-    with torch.no_grad():
-        input_images = torch.stack([x["image"] for x in batched_input], dim=0)
-        image_embeddings = sam.image_encoder(input_images)
-        sparse_embeddings_empty, _ = sam.prompt_encoder(points=None, boxes=None, masks=None)
+def get_standard_model(args, backbone_weight_dir='', embedding_dim=256, use_tanh=True):
+    net = args['net']
+    if net != 'HardNetSegmentor': raise ValueError(f"Model not implemented for net='{net}' Supported: net='HardNetSegmentor'")
 
-    low_res_masks, _ = sam.mask_decoder(
-        image_embeddings=image_embeddings,
-        image_pe=sam.prompt_encoder.get_dense_pe(),
-        sparse_prompt_embeddings=sparse_embeddings_empty,
-        dense_prompt_embeddings=dense_embeddings,
-        multimask_output=False)
-    return low_res_masks
-
-def get_standard_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
-    if args['net']=='HardNetSegmentor': model = HardNetSegmentor(args, segmentor=args['net_segmentor'], backbone_weight_dir=backbone_weight_dir, out_ch=out_ch, use_tanh=use_tanh)
-    else: raise ValueError(f"Model not implemented for net='{args['net']}' Supported: net='HardNetSegmentor'")
+    segmentor_type = args['segmentor_net_type']
+    model = HardNetSegmentor(args, segmentor=segmentor_type, backbone_weight_dir=backbone_weight_dir, embedding_dim=embedding_dim, use_tanh=use_tanh)
     
-    ckpt_dir = args['ckpt_path']
-    if ckpt_dir is not None:
-        print(f"[get_standard_model] Loading checkpoint: {ckpt_dir}")
-
+    ckpt_path = args['ckpt_path']
+    if ckpt_path is not None:
+        print(f"[get_standard_model] Loading checkpoint: {ckpt_path}")
         try:
             torch_version = version.parse(torch.__version__)
-            if torch_version >= version.parse('1.13.0'): ckpt_model = torch.load(ckpt_dir, map_location='cpu', weights_only=False)
-            else: ckpt_model = torch.load(ckpt_dir, map_location='cpu')
-        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
+            if torch_version >= version.parse('1.13.0'): ckpt_model = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+            else: ckpt_model = torch.load(ckpt_path, map_location='cpu')
+        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
  
-        if not args['use_sam'] and args['segmentor_finetune_backbone']: strict = False
-        else: strict = True
-
+        strict = False
         if isinstance(ckpt_model, nn.Module): state_dict = ckpt_model.state_dict()
         elif isinstance(ckpt_model, dict):
             state_dict = None
@@ -106,6 +92,19 @@ def get_standard_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
                 print(f"[get_standard_model]   Unexpected keys: {len(result.unexpected_keys)}")
                 for key in result.unexpected_keys[:5]: print(f"   - {key}")
             else: print(f"[get_standard_model]   Unexpected keys: 0 ✅")    
-
     print()
     return model
+
+def sam_call(batched_input, sam, dense_embeddings):
+    with torch.no_grad():
+        input_images = torch.stack([x["image"] for x in batched_input], dim=0)
+        image_embeddings = sam.image_encoder(input_images)
+        sparse_embeddings_empty, _ = sam.prompt_encoder(points=None, boxes=None, masks=None)
+
+    low_res_masks, _ = sam.mask_decoder(
+        image_embeddings=image_embeddings,
+        image_pe=sam.prompt_encoder.get_dense_pe(),
+        sparse_prompt_embeddings=sparse_embeddings_empty,
+        dense_prompt_embeddings=dense_embeddings,
+        multimask_output=False)
+    return low_res_masks

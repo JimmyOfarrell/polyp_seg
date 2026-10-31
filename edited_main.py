@@ -221,14 +221,8 @@ if __name__ == '__main__':
     parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
     parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
     
-    
-    
 
-    parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
-    parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample'], help='Aggregator head')
-    parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
-    parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
-    parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
+    
     parser.add_argument('-lr', '--learning_rate', default=0.01, help='Learning rate')
     parser.add_argument('-WD', '--WD', default=1e-4, help='Weight decay')
     parser.add_argument('--optim', type=str, default='Adam', choices=['Adam', 'SGD', 'AdamW'], help='Optimizer')

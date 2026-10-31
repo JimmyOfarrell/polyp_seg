@@ -17,6 +17,60 @@ class ModelEmb2DNet(nn.Module):
         if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} channels. Polyp pipeline requires RGB input.")
         return x
 
+class Segmentor2DNet(nn.Module):
+    is_segmentor = True
+
+    def __init__(self, args, out_channels):
+        super().__init__()
+        self.args = args
+        self.out_channels = out_channels
+        self.segmentor = None
+
+    def init_segmentor_head(self, segmentor_type, in_channels=256):
+        input_size = int(self.args['input_size'])
+        if segmentor_type == 'PointwiseConv':
+            self.segmentor = PointwiseCNN(in_channels=in_channels, out_channels=self.out_channels,output_size=(input_size, input_size))
+        elif segmentor_type == 'ConvUpsample':
+            self.segmentor = ConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
+        elif segmentor_type == 'TransposeConvUpsample': self.segmentor = TransposeConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
+        else: raise ValueError(f"Segmentor '{segmentor_type}' not implemented. Choose from: PointwiseConv, ConvUpsample, TransposeConvUpsample.")
+
+        n_params = sum(p.numel() for p in self.segmentor.parameters())
+
+        print(f"[SEGMENTOR] Aggregator Summary: {segmentor_type}")
+        print("-" * 58)
+        print(f"{'Property':<22} | {'Value'}")
+        print("-" * 58)
+        print(f"{'Type':<22} | {segmentor_type}")
+        print(f"{'Input channels':<22} | {in_channels}")
+        print(f"{'Output channels':<22} | {self.out_channels}")
+
+        if segmentor_type == 'PointwiseConv':
+            print(f"{'Output size':<22} | ({input_size}, {input_size})")
+            print(f"{'Structure':<22} | Conv1×1 → interpolate(bilinear)")
+            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
+            print(f"{'Output shape':<22} | (B, {self.out_channels}, {input_size}, {input_size})")
+        else:
+            factors = list(self.args.get('upsample_factor_list', [2, 2]))
+            scale = 1
+            for f in factors:
+                scale *= f
+            op = 'Upsample(bilinear)' if segmentor_type == 'ConvUpsample' else 'ConvTranspose2d'
+            struct = ' → '.join([f'Conv1×1 + {op}(×{f})' for f in factors]) + ' → Conv1×1'
+            print(f"{'Upsample factors':<22} | {factors}  (total ×{scale})")
+            print(f"{'Structure':<22} | {struct}")
+            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
+            print(f"{'Output shape':<22} | (B, {self.out_channels}, {scale}·H/4, {scale}·W/4)")
+
+        print("-" * 58)
+        print(f"{'Total parameters':<22} | {n_params:,} ({n_params/1e6:.4f}M)")
+
+
+    def preprocess(self, x):
+        if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")
+        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} Polyp pipeline requires RGB.")
+        return x
+
 class CNNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, drop=0):
         super().__init__()
@@ -155,59 +209,3 @@ class BottleneckBlock(nn.Module):
         x = F.relu(self.BN2(x))
         return x
     
-
-
-class Segmentor2DNet(nn.Module):
-    is_segmentor = True
-    is_3d = False
-
-    def __init__(self, args, out_channels):
-        super().__init__()
-        self.args = args
-        self.out_channels = out_channels
-        self.segmentor = None
-
-    def init_segmentor_head(self, segmentor_type, in_channels=256):
-        Idim = int(self.args.get('Idim', 512))
-        if segmentor_type == 'PointwiseConv':
-            self.segmentor = PointwiseCNN(in_channels=in_channels, out_channels=self.out_channels,output_size=(Idim, Idim))
-        elif segmentor_type == 'ConvUpsample':
-            self.segmentor = ConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
-        elif segmentor_type == 'TransposeConvUpsample': self.segmentor = TransposeConvUpsample(in_channels=in_channels, out_channels=self.out_channels, upsample_factors=self.args['upsample_factor_list'])
-        else: raise ValueError(f"Segmentor '{segmentor_type}' not implemented. Choose from: PointwiseConv, ConvUpsample, TransposeConvUpsample.")
-
-        n_params = sum(p.numel() for p in self.segmentor.parameters())
-
-        print(f"[SEGMENTOR] Aggregator Summary: {segmentor_type}")
-        print("-" * 58)
-        print(f"{'Property':<22} | {'Value'}")
-        print("-" * 58)
-        print(f"{'Type':<22} | {segmentor_type}")
-        print(f"{'Input channels':<22} | {in_channels}")
-        print(f"{'Output channels':<22} | {self.out_channels}")
-
-        if segmentor_type == 'PointwiseConv':
-            print(f"{'Output size':<22} | ({Idim}, {Idim})")
-            print(f"{'Structure':<22} | Conv1×1 → interpolate(bilinear)")
-            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
-            print(f"{'Output shape':<22} | (B, {self.out_channels}, {Idim}, {Idim})")
-        else:
-            factors = list(self.args.get('upsample_factor_list', [2, 2]))
-            scale = 1
-            for f in factors:
-                scale *= f
-            op = 'Upsample(bilinear)' if segmentor_type == 'ConvUpsample' else 'ConvTranspose2d'
-            struct = ' → '.join([f'Conv1×1 + {op}(×{f})' for f in factors]) + ' → Conv1×1'
-            print(f"{'Upsample factors':<22} | {factors}  (total ×{scale})")
-            print(f"{'Structure':<22} | {struct}")
-            print(f"{'Input shape':<22} | (B, {in_channels}, H/4, W/4)")
-            print(f"{'Output shape':<22} | (B, {self.out_channels}, {scale}·H/4, {scale}·W/4)")
-
-        print("-" * 58)
-        print(f"{'Total parameters':<22} | {n_params:,} ({n_params/1e6:.4f}M)")
-
-
-    def preprocess(self, x):
-        if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")
-        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} Polyp pipeline requires RGB.")
-        return x
