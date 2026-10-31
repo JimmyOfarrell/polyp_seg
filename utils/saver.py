@@ -48,7 +48,6 @@ class Saver:
         print(f"[SAVER] Checkpoint directory created: {self.ckpt_dir}")
         print(f"[SAVER] Visualization directory created: {self.vis_dir}\n")
 
-
         try:
             wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
             self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
@@ -81,7 +80,7 @@ class Saver:
             self.wandb_run = None
             print(f"[WARNING] W&B initialization failed | error={type(e).__name__}: {e}")
             print(f"[SAVER] Continuing with local logging only.\n")   
-               
+        input('stop')       
     def create_best_csv(self, best_metric):
         self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
         with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
