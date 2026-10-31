@@ -94,8 +94,10 @@ def main(args=None, sam_args=None, saver=None):
         print()
 
     if not args['use_aggregator']:
+        print('*'*80)
         print(f"[MAIN] Building prompt learner (backbone + decoder) [ModelEmb]:")
         model = get_model(args)
+        print('*'*80)
         input('stop')
     else:
         print(f"[MAIN] Building prompt learner (backbone + decoder) + aggregator [HardNetSegmentor]:")
