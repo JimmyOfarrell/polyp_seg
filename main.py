@@ -4,7 +4,8 @@ import os
 import sys
 import shlex
 from segment_anything import sam_model_registry
-from utils.utils import str2bool, disable_batchnorm_running_stats, set_seed
+from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
+from utils.model_utils import get_model, get_standard_model
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -75,14 +76,14 @@ def main(args=None, sam_args=None, saver=None):
         mask_decoder_params = sum(p.numel() for p in sam.mask_decoder.parameters())
         sam_memory_mb = sum(p.numel() * p.element_size() for p in sam.parameters()) / (1024**2)
         img_dim = sam.image_encoder.img_size
-        print(f"[MAIN] SAM input resolution: {img_dim}x{img_dim}")
-        print(f"[MAIN] SAM Parameters      : {sam_params:,} ({sam_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM Memory          : {sam_memory_mb:.2f} MB")
-        print(f"[MAIN] SAM Device          : {args['device']}")
-        print(f"[MAIN] SAM Mode            : Frozen (eval)")
-        print(f"[MAIN] SAM  Image Encoder  : {sam_image_encoder_params:,} ({sam_image_encoder_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM  Prompt Encoder : {sam_prompt_encoder_params:,} ({sam_prompt_encoder_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM  Mask Decoder   : {mask_decoder_params:,} ({mask_decoder_params/1e6:.2f}M)")
+        print(f"[MAIN] SAM input resolution          : {img_dim}x{img_dim}")
+        print(f"[MAIN] SAM Parameters                : {sam_params:,} ({sam_params/1e6:.2f}M)")
+        print(f"[MAIN] SAM Memory                    : {sam_memory_mb:.2f} MB")
+        print(f"[MAIN] SAM Device                    : {args['device']}")
+        print(f"[MAIN] SAM Mode                      : Frozen (eval)")
+        print(f"[MAIN] Image Encoder Parameters      : {sam_image_encoder_params:,} ({sam_image_encoder_params/1e6:.2f}M)")
+        print(f"[MAIN] SAM Prompt Encoder Parameters : {sam_prompt_encoder_params:,} ({sam_prompt_encoder_params/1e6:.2f}M)")
+        print(f"[MAIN] SAM Mask Decoder Parameters   : {mask_decoder_params:,} ({mask_decoder_params/1e6:.2f}M)")
         if disable_bn: disable_batchnorm_running_stats(sam)
         print()    
     else:
@@ -92,8 +93,24 @@ def main(args=None, sam_args=None, saver=None):
         print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
         print()
 
-    input('stop')
-              
+    if not args['use_aggregator']:
+        print(f"[MAIN] Building prompt learner (backbone + decoder) [ModelEmb]:")
+        model = get_model(args)
+        input('stop')
+    else:
+        print(f"[MAIN] Building prompt learner (backbone + decoder) + aggregator [HardNetSegmentor]:")
+        model = get_standard_model(args)
+
+    model = model.to(device)
+    model_params = sum(p.numel() for p in model.parameters())
+    model_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    model_memory_mb = sum(p.numel() * p.element_size() for p in model.parameters()) / (1024**2)
+
+    print(f"[MAIN] Model Parameters      : {model_params:,}")
+    print(f"[MAIN] Trainable Parameters  : {model_trainable_params:,}")
+    print(f"[MAIN] Model Memory          : {model_memory_mb:.2f} MB")
+    print(f"[MAIN] Model on device       : {device}\n")
+    if disable_bn: disable_batchnorm_running_stats(model)          
           
 
 if __name__ == '__main__':
@@ -129,6 +146,12 @@ For usage examples, see README.md
     parser.add_argument('--device_id', type=int, default=0, help='GPU index')
     parser.add_argument('--disable_batchnorm_running_stats', type=str2bool, default=False, help='Disable batchnorm running stats')
     parser.add_argument('-input_size', '--input_size', type=int, default=512, help='Input image size (resize resolution)')
+    parser.add_argument('--use_aggregator', type=str2bool, default=False, help='Use HardNetSegmentor (backbone + decoder + aggregator) vs ModelEmb (backbone + decoder)')
+    parser.add_argument('--backbone_type', type=str, default='HardNet', help='Prompt learner backbone')
+    parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='Use depthwise HarDNet')
+    parser.add_argument('-order', '--order', default=68, type=int, help='HarDNet variant: 39 | 68 | 85')
+    parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
+    parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
     print(parser.description)
     args = vars(parser.parse_args())
 

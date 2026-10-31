@@ -19,7 +19,7 @@ class DWConvLayer(nn.Sequential):
         self.add_module('norm', nn.BatchNorm2d(in_channels))
 
 class CombConvLayer(nn.Sequential):
-    def __init__(self, in_channels: int, out_channels: int, kernel: int = 1, stride: int = 1, bias: bool = False) -> None:
+    def __init__(self, in_channels: int, out_channels: int, kernel: int = 1, stride: int = 1, bias: bool = False):
         super().__init__()
         self.add_module('layer1', ConvLayer(in_channels, out_channels, kernel, bias=bias))
         self.add_module('layer2', DWConvLayer(out_channels, out_channels, stride=stride, bias=bias))
@@ -95,7 +95,7 @@ class HarDNet(nn.Module):
                         (85, False): 'https://ping-chao.com/hardnet/hardnet85-a28faa00.pth',
                         (68, True):  'https://ping-chao.com/hardnet/hardnet68ds-632474d2.pth',
                         (39, True):  'https://ping-chao.com/hardnet/hardnet39ds-0e6c6fa9.pth'}
-    
+
     def __init__(self, depth_wise=False, arch=68, pretrained=True, weight_dir=''):
         super().__init__()
         if arch not in (39, 68, 85): raise ValueError(f"Unsupported HarDNet arch={arch}. Choose from 39, 68, 85.")
@@ -144,7 +144,7 @@ class HarDNet(nn.Module):
 
         print(f"[BACKBONE] Initializing HarDNet-{arch}:")
         print(f"[BACKBONE] Pretrained: {pretrained} | Depthwise: {depth_wise}")
-        print(f"[BACKBONE] Output channels per stage: {full_features}", '\n')
+        print(f"[BACKBONE] Output channels per stage: {full_features}\n")
 
         blks = len(n_layers)
         self.base = nn.ModuleList([])
@@ -192,7 +192,6 @@ class HarDNet(nn.Module):
         print(f"{'Total parameters':<22} | {self.num_params:,} ({self.num_params / 1e6:.2f}M)")
         print()
 
-
     def _load_pretrained(self, arch, depth_wise, weight_dir):
         postfix = 'DS' if depth_wise else ''
         postfix_local = 'ds' if depth_wise else ''
@@ -217,11 +216,10 @@ class HarDNet(nn.Module):
         try:state = torch.hub.load_state_dict_from_url(checkpoint, progress=True, map_location='cpu')
         except Exception as e: raise RuntimeError(f"Failed to download weights from {checkpoint}: {e}\nIf offline, set pretrained=False or place file 'hardnet{arch}{postfix_local}.pth' in weight_dir.") from e
         self.load_state_dict(state)
-        print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.", '\n')
+        print(f"[BACKBONE] Loaded HarDNet-{arch}{postfix} from URL.\n")
 
     def forward(self, x):
         x2 = x4 = x8 = x16 = x32 = None
-
         for inx, layer in enumerate(self.base):
             x = layer(x)
             if inx == self.feature_indices[0]: x2 = x
@@ -229,11 +227,8 @@ class HarDNet(nn.Module):
             elif inx == self.feature_indices[2]: x8 = x
             elif inx == self.feature_indices[3]: x16 = x
             elif inx == self.feature_indices[4]: x32 = x
-
         features = (x2, x4, x8, x16, x32)
-
         if any(f is None for f in features):
             missing = [i for i, f in enumerate(features) if f is None]
             raise RuntimeError(f"HarDNet forward: feature maps {missing} were not captured. Check self.feature_indices = {self.feature_indices} and len(self.base) = {len(self.base)}.")
-
         return features

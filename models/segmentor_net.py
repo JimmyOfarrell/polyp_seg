@@ -15,7 +15,7 @@ class HardNetSegmentor(Segmentor2DNet):
         self.backbone = HarDNet(depth_wise=self.depth_wise, arch=self.arch, pretrained=self.pretrained, weight_dir=self.backbone_weight_dir)
         for param in self.backbone.parameters(): param.requires_grad = True
         self.backbone_full_features = self.backbone.full_features
-        self.decoder = SmallDecoder(self.backbone_full_features, out=self.decoder_out_ch, use_tanh=self.use_tanh)
+        self.decoder = SmallDecoder(self.backbone_full_features, embedding_dim=self.decoder_out_ch, use_tanh=self.use_tanh)
         self.init_segmentor_head(segmentor_type=self.segmentor_name, in_channels=self.decoder_out_ch)
 
         n_bb  = sum(p.numel() for p in self.backbone.parameters())

@@ -3,6 +3,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from miniSegmentor.aggregator import PointwiseCNN, ConvUpsample, TransposeConvUpsample
 
+class ModelEmb2DNet(nn.Module):
+    is_segmentor = False
+    is_model_emb = True
+    
+    def __init__(self, embedding_dim=256):
+        super().__init__()
+        if embedding_dim != 256: raise ValueError(f"ModelEmb2DNet requires embedding_dim=256 to match SAM's dense embedding dimension, got out={embedding_dim}")
+        self.embedding_dim = embedding_dim
+
+    def preprocess(self, x):
+        if x.ndim != 4: raise ValueError(f"ModelEmb2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)}")
+        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} channels. Polyp pipeline requires RGB input.")
+        return x
+
 class CNNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, drop=0):
         super().__init__()
@@ -196,20 +210,4 @@ class Segmentor2DNet(nn.Module):
     def preprocess(self, x):
         if x.ndim != 4: raise ValueError(f"Segmentor2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)} with ndim={x.ndim}.")
         if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} Polyp pipeline requires RGB.")
-        return x
-
-class ModelEmb2DNet(nn.Module):
-    is_segmentor = False
-    is_model_emb = True
-    is_3d = False
-    
-    def __init__(self, args, out=256):
-        super().__init__()
-        if out != 256: raise ValueError(f"ModelEmb2DNet requires out=256 to match SAM's dense embedding dimension, got out={out}")
-        self.args = args
-        self.out = out
-
-    def preprocess(self, x):
-        if x.ndim != 4: raise ValueError(f"ModelEmb2DNet expects 4D input (B, C, H, W), got shape {tuple(x.shape)}")
-        if x.shape[1] != 3: raise ValueError(f"Expected RGB (3 channels), got {x.shape[1]} channels. Polyp pipeline requires RGB input.")
         return x

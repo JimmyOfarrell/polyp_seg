@@ -13,52 +13,14 @@ import sys
 import shlex
 
 from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
-from utils.model_utils import get_model, get_standard_model
+
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 def main(args=None, sam_args=None, saver=None):
     
-    
-    
-    
-    
     num_epochs = int(args['epochs'])
-
     
-    
-        
-    
-
-        
-            
-            
-             
-              
-        
-         
-
-        
-
-        
-        
-            
-            
-         
-    
-
-    
-    if not args['use_standard_net']:
-        print(f"[MAIN] Building ModelEmb (Phase 1: SAM-guided prompt learning):")
-        model = get_model(args)
-    else:
-        print(f"[MAIN] Building HardNetSegmentor (Phase 2: aggregator-only):")
-        model = get_standard_model(args)
-
-    model = model.to(device)
-    print(f"[MAIN] Model on device: {device}", '\n')
-
-    if disable_bn: disable_batchnorm_running_stats(model)
 
     if not use_sam:
         if not args['segmentor_finetune_backbone']:
@@ -258,12 +220,10 @@ if __name__ == '__main__':
     parser.add_argument('-bs', '--Batch_size', type=int, default=2, help='Batch size')
     parser.add_argument('-nW', '--nW', type=int, default=0, help='Number of workers for train loader')
     parser.add_argument('-nW_eval', '--nW_eval', type=int, default=0, help='Number of workers for val loader')
-    parser.add_argument('--use_standard_net', type=str2bool, default=False, help='Use standard segmentor (phase 2) vs prompt learner (phase 1)')
-    parser.add_argument('--model_emb', type=str, default='HardNet', help='Prompt learner backbone')
-    parser.add_argument('-depth_wise', '--depth_wise', type = str2bool, default=False, help='Use depthwise HarDNet')
-    parser.add_argument('-order', '--order', default=68, type=int, help='HarDNet variant: 39 | 68 | 85')
-    parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
-    parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
+    
+    
+    
+
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
     parser.add_argument('--net_segmentor', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample'], help='Aggregator head')
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')

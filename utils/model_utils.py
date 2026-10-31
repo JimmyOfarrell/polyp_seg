@@ -4,22 +4,24 @@ from models.model_emb import ModelEmb
 from models.segmentor_net import HardNetSegmentor
 from packaging import version
 
-def get_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
-    if args['model_emb'] != 'HardNet': raise ValueError(f"Unsupported model_emb='{args['model_emb']}'. Only 'HardNet' is currently supported.")
-    try: model = ModelEmb(args=args, backbone_weight_dir=backbone_weight_dir, out_ch=out_ch, use_tanh=use_tanh)
-    except Exception as e: raise RuntimeError(f"Failed to build ModelEmb (model_emb={args['model_emb']}): {e}") from e
+def get_model(args, backbone_weight_dir='', embedding_dim=256, use_tanh=True):
+    backbone_type = args['backbone_type']
+    if backbone_type != 'HardNet': raise ValueError(f"Unsupported backbone_type='{backbone_type}'. Only 'HardNet' is currently supported.")
+    try: model = ModelEmb(args=args, backbone_weight_dir=backbone_weight_dir, embedding_dim=embedding_dim, use_tanh=use_tanh)
+    except Exception as e: raise RuntimeError(f"Failed to build ModelEmb (backbone_type={backbone_type}): {e}") from e
 
-    ckpt_dir = args['ckpt_path']
-    if ckpt_dir is not None:
-        try: ckpt = torch.load(ckpt_dir, map_location='cpu', weights_only=False)
+    ckpt_path = args['ckpt_path']
+    if ckpt_path is not None:
+        try: ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
         except TypeError:
-            try: ckpt = torch.load(ckpt_dir, map_location='cpu')
-            except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
-        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_dir}': {e}") from e
+            try: ckpt = torch.load(ckpt_path, map_location='cpu')
+            except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
+        except Exception as e: raise RuntimeError(f"Failed to load checkpoint '{ckpt_path}': {e}") from e
 
         if isinstance(ckpt, dict):
             if 'model_state_dict' in ckpt: state_dict = ckpt['model_state_dict']
             elif 'state_dict' in ckpt: state_dict = ckpt['state_dict']
+            elif 'model' in ckpt and isinstance(ckpt['model'], nn.Module): state_dict = ckpt['model'].state_dict()
             else: state_dict = ckpt
         else: state_dict = ckpt.state_dict()
 
@@ -28,7 +30,7 @@ def get_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
         try: result = model.load_state_dict(state_dict, strict=strict)
         except RuntimeError as e: raise RuntimeError(f"Failed to load state_dict into model: {e}") from e
 
-        print(f"[get_model] Checkpoint loaded from '{ckpt_dir}' (strict={strict})")
+        print(f"[get_model] Checkpoint loaded from '{ckpt_path}' (strict={strict})")
 
         if not strict:
             if result.missing_keys:
@@ -39,7 +41,6 @@ def get_model(args, backbone_weight_dir='', out_ch=256, use_tanh=True):
                 for key in result.unexpected_keys[:5]: print(f"   - {key}")
     print()        
     return model
-
 
 def sam_call(batched_input, sam, dense_embeddings):
     with torch.no_grad():
