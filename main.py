@@ -417,6 +417,7 @@ For usage examples, see README.md
     parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
     parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
     parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
+    parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save training images to WandB')
 
     print(parser.description)
     args = vars(parser.parse_args())

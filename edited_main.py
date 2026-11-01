@@ -64,7 +64,7 @@ if __name__ == '__main__':
     
     
     
-    parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save training images to WandB')
+    
     
     parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save validation images to WandB')
     parser.add_argument('--save_every', type=int, default=10, help='Save net_last checkpoint every N epochs (also saves at last epoch)')

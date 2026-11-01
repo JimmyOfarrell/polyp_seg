@@ -1,3 +1,4 @@
+import torch.nn.functional as F
 from models.hardnet import HarDNet
 from models.base import Segmentor2DNet
 from models.model_single import SmallDecoder
@@ -51,12 +52,12 @@ class HardNetSegmentor(Segmentor2DNet):
         print(f"{'Input':<22} | (B, 3, H, W) — e.g. (1, 3, 512, 512)")
         print(f"{'Dense embeddings':<22} | (B, {self.decoder_embedding_dim}, H/4, W/4) — tanh ∈ [-1, 1]")
         print(f"{'Output':<22} | (B, {self.out_channels}, {input_size}, {input_size}) — raw logits")
-        print(f"{'Post-activation':<22} | sigmoid applied by loss/metric", '\n')
+        print(f"{'Post-activation':<22} | sigmoid applied by loss/metric", '\n')        
 
-            
-    def forward(self, img):
+    def forward(self, img, return_features=False):
         img = self.preprocess(img)
         z = self.backbone(img)
         dec = self.decoder(z)
         out = self.segmentor(dec)
+        if return_features: return out, dec
         return out

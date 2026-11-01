@@ -61,31 +61,37 @@ def train_single_epoch(train_context, epoch):
     
     if use_scheduler : saver.log_scalar('learning_rate', optimizer.param_groups[0]['lr'], epoch, log_to_csv=False)
     optimizer.zero_grad()
-    input('Press Enter to start training...')
 
     for ix,  sample in enumerate(pbar):      
         imgs = sample[image_key]
         gts = sample[mask_key]
         original_sz = sample['original_shape']
-
         batch_size = imgs.shape[0]
         img_sz =torch.tensor(imgs.shape[2:]).repeat(batch_size, 1)
-
-        orig_imgs = imgs.to(args['device'], non_blocking=True)
-        gts = gts.to(args['device'], non_blocking=True)
+        orig_imgs = imgs.to(device, non_blocking=True)
+        gts = gts.to(device, non_blocking=True)
         
         with autocast('cuda', enabled=use_amp):
-            if sam is not None:
+            if sam is not None and not use_aggregator:
                 orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
-                
                 masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
-            else: masks = model(orig_imgs)
+                sam_target = None
+            elif sam is not None and use_aggregator:
+                orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
+                masks, dec = model(orig_imgs_small, return_features=True)
+                with torch.no_grad():
+                    dense_embeddings = F.interpolate(dec, size=(64, 64), mode='bilinear', align_corners=False) 
+                    batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
+                    sam_logits = sam_call(batched_input, sam, dense_embeddings)
+                    sam_target = norm_batch(sam_logits, mode=norm_mode)  
+            else:
+                masks = model(orig_imgs)
+                sam_target = None
 
             size = masks.shape[2:]
             gts_resized = F.interpolate(gts, size=size, mode='nearest')
-
             onehot_gts=one_hot(post_trans(gts_resized))
 
             if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
@@ -93,7 +99,13 @@ def train_single_epoch(train_context, epoch):
                 probs = sigmoid(masks) if apply_sigm else masks
                 pred_polyp = post_trans(probs[:, 1:2])
                 onehot_masks = torch.cat([1.0 - pred_polyp, pred_polyp], dim=1)
-            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}. Expected 1 or 2.")    
+            else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}. Expected 1 or 2.")
+
+            sam_onehot = None
+            if sam_target is not None:
+                sam_target_resized = F.interpolate(sam_target, size=masks.shape[2:], mode='bilinear', align_corners=False)
+                sam_binary = post_trans(sam_target_resized)
+                sam_onehot = one_hot(sam_binary)    
             
             if getattr(saver, 'wandb_enabled', False) and args.get('save_train_images', False) and ix < 10 and epoch % 5 == 0:
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
@@ -132,6 +144,6 @@ def train_single_epoch(train_context, epoch):
         diceMetric.reset()
         iouMetric.reset()
 
-    if use_scheduler: saver.log_loss('lr_end', optimizer.param_groups[0]['lr'], epoch)
+    if use_scheduler: saver.log_scalar('learning_rate_end', optimizer.param_groups[0]['lr'], epoch, log_to_csv=False)
 
     return np.mean(loss_list), np.mean(dice_list), np.mean(iou_list)
