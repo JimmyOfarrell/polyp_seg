@@ -66,6 +66,38 @@ def main(args=None, sam_args=None, saver=None):
     disable_bn = args['disable_batchnorm_running_stats']
 
     if use_sam:
+        config = {'trainable': 'all', 'sam_loaded': True, 'loss': 'gt'}
+        stage = None
+        pl_status = 'trainable'
+        distill_alpha = None
+        scenario_label = 'Phase 1 (SAM-guided)'
+        loss_desc = 'l(p, gt)'
+    elif args['phase_2_mode'] == 'single':
+        pl_frozen = not args['single_pl_trainable']
+        loss_type = args['single_loss_type']
+        config = { 'trainable': 'aggregator' if pl_frozen else 'all', 'sam_loaded': (loss_type == 'mixed'), 'loss': loss_type}
+        stage = None
+        pl_status = 'frozen' if pl_frozen else 'trainable'
+        distill_alpha = args['single_distill_weight'] if loss_type == 'mixed' else None
+        scenario_label = f"Single | PL={pl_status} | loss={loss_type}"
+        loss_desc = {'gt':    'l(p, gt)', 'mixed': f'l(p, sam+gt) [alpha={args["single_distill_weight"]}]'}[loss_type]
+    else:
+        stage = args['stage']
+        if stage == 1:
+            loss_type = args['stage1_loss_type']
+            config = {'trainable': 'aggregator', 'sam_loaded': True, 'loss': loss_type}
+            pl_status = 'frozen'
+            distill_alpha = args['stage1_distill_weight'] if loss_type == 'mixed' else None
+            loss_desc = {'sam':   'l(p, sam)', 'mixed': f'l(p, sam+gt) [alpha={args["stage1_distill_weight"]}]'}[loss_type]
+        else:
+            config = {'trainable': 'all', 'sam_loaded': False, 'loss': 'gt'}
+            pl_status = 'trainable'
+            distill_alpha = None
+            loss_desc = 'l(p, gt)'
+        scenario_label = f"Two-stage | Stage {stage} | loss={config['loss']}" 
+    sam_needed = config['sam_loaded']   
+    
+    if sam_needed:
         print("[MAIN] SAM model Configuration:")
         try: sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
         except Exception as e: raise RuntimeError(f"Failed to load SAM '{sam_args['model_type']}' from '{sam_args['sam_checkpoint']}': {e}")
@@ -76,22 +108,25 @@ def main(args=None, sam_args=None, saver=None):
         mask_decoder_params = sum(p.numel() for p in sam.mask_decoder.parameters())
         sam_memory_mb = sum(p.numel() * p.element_size() for p in sam.parameters()) / (1024**2)
         img_dim = sam.image_encoder.img_size
-        print(f"[MAIN] SAM input resolution          : {img_dim}x{img_dim}")
-        print(f"[MAIN] SAM Parameters                : {sam_params:,} ({sam_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM Memory                    : {sam_memory_mb:.2f} MB")
-        print(f"[MAIN] SAM Device                    : {args['device']}")
-        print(f"[MAIN] SAM Mode                      : Frozen (eval)")
-        print(f"[MAIN] Image Encoder Parameters      : {sam_image_encoder_params:,} ({sam_image_encoder_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM Prompt Encoder Parameters : {sam_prompt_encoder_params:,} ({sam_prompt_encoder_params/1e6:.2f}M)")
-        print(f"[MAIN] SAM Mask Decoder Parameters   : {mask_decoder_params:,} ({mask_decoder_params/1e6:.2f}M)")
+        if use_sam: sam_role = 'forward pass (produces mask)'
+        elif config['loss'] == 'sam': sam_role = 'forward pass (distillation target only)'
+        else: sam_role = 'forward pass (distillation target + loss)'  
+        print(f"[MAIN] {'SAM role':<32}: {sam_role}")
+        print(f"[MAIN] {'SAM input resolution':<32}: {img_dim}x{img_dim}")
+        print(f"[MAIN] {'SAM Parameters':<32}: {sam_params:,} ({sam_params/1e6:.2f}M)")
+        print(f"[MAIN] {'SAM Memory':<32}: {sam_memory_mb:.2f} MB")
+        print(f"[MAIN] {'SAM Device':<32}: {args['device']}")
+        print(f"[MAIN] {'SAM Mode':<32}: Frozen (eval)")
+        print(f"[MAIN] {'Image Encoder Parameters':<32}: {sam_image_encoder_params:,} ({sam_image_encoder_params/1e6:.2f}M)")
+        print(f"[MAIN] {'Prompt Encoder Parameters':<32}: {sam_prompt_encoder_params:,} ({sam_prompt_encoder_params/1e6:.2f}M)")
+        print(f"[MAIN] {'Mask Decoder Parameters':<32}: {mask_decoder_params:,} ({mask_decoder_params/1e6:.2f}M)")
         if disable_bn: disable_batchnorm_running_stats(sam)
         print()    
     else:
         sam = None
         img_dim = int(args['input_size'])
-        print(f"[MAIN] SAM is disabled. Using standard segmentor directly.")
-        print(f"[MAIN] Using Idim = {img_dim}×{img_dim} for prompt learner input")
-        print()
+        print(f"[MAIN] {'SAM status':<32}: Disabled (not needed for this scenario)")
+        print(f"[MAIN] {'Input resolution':<32}: {img_dim}x{img_dim}\n")
 
     if not args['use_aggregator']:
         print('*'*80)
@@ -103,103 +138,40 @@ def main(args=None, sam_args=None, saver=None):
         print(f"[MAIN] Building prompt learner (backbone + decoder) + aggregator [HardNetSegmentor]:")
         model = get_standard_model(args)
         print('*'*80)
-
     model = model.to(device)
     model_params = sum(p.numel() for p in model.parameters())
     model_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_memory_mb = sum(p.numel() * p.element_size() for p in model.parameters()) / (1024**2)
-
     print(f"\n[MAIN] Model Parameters      : {model_params:,}")
     print(f"[MAIN] Trainable Parameters  : {model_trainable_params:,}")
     print(f"[MAIN] Model Memory          : {model_memory_mb:.2f} MB")
     print(f"[MAIN] Model on device       : {device}\n")
     if disable_bn: disable_batchnorm_running_stats(model)
 
-    SINGLE_CONFIGS = {
-    1: {'trainable': 'aggregator', 'sam_loaded': False, 'loss': 'gt'},
-    2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
-    3: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
-    4: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
-}
-
-    TWO_STAGE_CONFIGS = {
-        1: {
-            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
-            2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
-        },
-        2: {
-            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
-            2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
-        },
-        3: {
-            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'sam'},
-            2: {'trainable': 'aggregator', 'sam_loaded': False, 'loss': 'gt'},
-        },
-        4: {
-            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
-            2: {'trainable': 'all',         'sam_loaded': True,  'loss': 'mixed'},
-        },
-        5: {
-            1: {'trainable': 'aggregator', 'sam_loaded': True,  'loss': 'mixed'},
-            2: {'trainable': 'all',         'sam_loaded': False, 'loss': 'gt'},
-        },
-    }
-
-    if not use_sam:
-        if args['phase_2_mode'] == 'single':
-            config = SINGLE_CONFIGS[args['single_scenario']]
-            scenario = args['single_scenario']
-            stage = None
-            scenario_label = f"Single S{scenario}"
-
-        else:
-            scenario = args['two_stage_scenario']
-            stage = args['stage']
-            config = TWO_STAGE_CONFIGS[scenario][stage]
-            scenario_label = f"Two-stage T{scenario}, Stage {stage}"    
-        
-        loss_desc = {'gt':    'l(p, gt)', 'sam':   'l(p, sam_out)', 'mixed': f'l(p, gt_sam)  [alpha={args["distill_weight"]}]'}[config['loss']]
-        pl_status = 'frozen' if config['trainable'] == 'aggregator' else 'trainable'
-   
-        args['sam_loaded'] = config['sam_loaded']
-        args['loss_type'] = config['loss']
-        args['trainable_scope'] = config['trainable']
-        args['current_stage'] = stage
-        args['current_scenario'] = scenario
-    
-        if config['trainable'] == 'aggregator':
-            for param in model.parameters(): param.requires_grad = False
-            for param in model.segmentor.parameters(): param.requires_grad = True
-            params_to_optimize = list(model.segmentor.parameters())
-        else:
-            for param in model.parameters(): param.requires_grad = True
-            params_to_optimize = list(model.parameters())
+    if config['trainable'] == 'aggregator':
+        for p in model.parameters(): p.requires_grad = False
+        for p in model.segmentor.parameters(): p.requires_grad = True
+        params_to_optimize = list(model.segmentor.parameters())
     else:
-        for param in model.parameters(): param.requires_grad = True
-        params_to_optimize = list(model.parameters())
-        config = None
-        scenario = None
-        stage = None
-        pl_status = None
-        loss_desc = None
-        args['sam_loaded'] = True
-        args['loss_type'] = 'gt'
-        args['trainable_scope'] = 'all'         
-   
+        for p in model.parameters(): p.requires_grad = True
+        params_to_optimize = list(model.parameters())    
+
+    args['sam_loaded']     = sam_needed
+    args['loss_type']      = config['loss']
+    args['distill_alpha']  = distill_alpha
+    args['trainable_scope'] = config['trainable']
+    args['current_stage']  = stage
+    args['phase_2_label']  = scenario_label
+    args['phase_2_mode']   = args['phase_2_mode']
+
+    
     n_total     = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_frozen    = n_total - n_trainable
     train_ratio = 100.0 * n_trainable / max(n_total, 1)
-
     bytes_per_param = next(model.parameters()).element_size()
     param_mem_mb = n_total * bytes_per_param / (1024**2)
     grad_mem_mb  = n_trainable * bytes_per_param / (1024**2)
-
-    n_tensors_trainable = sum(1 for p in model.parameters() if p.requires_grad)
-    n_tensors_total     = sum(1 for p in model.parameters())
-
-    devices = {str(p.device) for p in model.parameters()}
-    dtypes  = {str(p.dtype).replace('torch.','') for p in model.parameters()}
 
     n_bb_tr  = sum(p.numel() for p in model.backbone.parameters() if p.requires_grad) if hasattr(model, 'backbone') else 0
     n_bb     = sum(p.numel() for p in model.backbone.parameters()) if hasattr(model, 'backbone') else 0
@@ -208,40 +180,27 @@ def main(args=None, sam_args=None, saver=None):
     n_seg_tr = sum(p.numel() for p in model.segmentor.parameters() if p.requires_grad) if getattr(model, 'segmentor', None) is not None else 0
     n_seg    = sum(p.numel() for p in model.segmentor.parameters()) if getattr(model, 'segmentor', None) is not None else 0
 
-    if use_sam:
-        phase_label = 'Phase 1 (SAM-guided)'
-        scenario_header = None
-    else:
-        phase_label = f"Phase 2 — {scenario_label}"
-        scenario_header = {
-            'pl_status': pl_status,
-            'sam_loaded': config['sam_loaded'],
-            'loss_desc': loss_desc,
-        }
-
-    sam_params = sum(p.numel() for p in sam.parameters()) if sam is not None else 0
-
-    if scenario_header is not None:
-        print(f"[MAIN] {phase_label}")
-        print(f"[MAIN] ─────────────────────────────────")
-        print(f"[MAIN] PL (backbone+decoder) : {scenario_header['pl_status']}")
-        print(f"[MAIN] Aggregator            : trainable")
-        print(f"[MAIN] SAM loaded (frozen)   : {'Yes' if scenario_header['sam_loaded'] else 'No'}")
-        print(f"[MAIN] Loss                  : {scenario_header['loss_desc']}")
-        print(f"[MAIN] Trainable params      : {n_trainable:,} / {n_total:,} ({100*n_trainable/max(n_total,1):.2f}%)")
-        print()
+    print(f"[MAIN] {scenario_label}")
+    print(f"[MAIN] ─────────────────────────────────────────────────────")
+    print(f"[MAIN] Prompt Learner   : {pl_status}")
+    print(f"[MAIN] Aggregator       : {'trainable' if config['trainable'] in ('aggregator', 'all') else 'N/A'}")
+    print(f"[MAIN] SAM loaded       : {'Yes' if sam_needed else 'No'}")
+    print(f"[MAIN] Loss             : {loss_desc}")
+    if distill_alpha is not None:
+        print(f"[MAIN] distill alpha    : {distill_alpha}")
+    print(f"[MAIN] Trainable params : {n_trainable:,} / {n_total:,} ({train_ratio:.2f}%)")
+    print()
 
     print("[MAIN] Parameter Optimization Summary:")
     print("-" * 58)
     print(f"{'Property':<26} | {'Value'}")
     print("-" * 58)
-    print(f"{'Phase':<26} | {phase_label}")
+    print(f"{'Phase':<26} | {scenario_label}")
     print(f"{'Model type':<26} | {type(model).__name__}")
     print(f"{'Total params':<26} | {n_total:,} ({n_total/1e6:.2f}M)")
     print(f"{'Trainable params':<26} | {n_trainable:,} ({n_trainable/1e6:.2f}M)")
     print(f"{'Frozen params':<26} | {n_frozen:,} ({n_frozen/1e6:.2f}M)")
     print(f"{'Trainable ratio':<26} | {train_ratio:.2f}%")
-    print(f"{'Trainable tensors':<26} | {n_tensors_trainable} / {n_tensors_total}")
     print("-" * 58)
     if n_bb:  print(f"{'Backbone (HarDNet)':<26} | {n_bb_tr:,} / {n_bb:,} ({100.0*n_bb_tr/max(n_bb,1):.1f}%)")
     if n_dec: print(f"{'Decoder (SmallDecoder)':<26} | {n_dec_tr:,} / {n_dec:,} ({100.0*n_dec_tr/max(n_dec,1):.1f}%)")
@@ -250,18 +209,11 @@ def main(args=None, sam_args=None, saver=None):
     print(f"{'Param memory (fp32)':<26} | {param_mem_mb:.2f} MB")
     print(f"{'Grad memory (fp32)':<26} | {grad_mem_mb:.2f} MB")
     print(f"{'Total (param+grad)':<26} | {param_mem_mb + grad_mem_mb:.2f} MB")
-    print("-" * 58)
-    
     if sam is not None:
-        sam_role = 'in forward pass' if use_sam else 'for pseudo-labels/auxiliary loss'
-        print(f"{'SAM (frozen, not in opt)':<26} | {sam_params:,} ({sam_params/1e6:.2f}M) — {sam_role}")
         print("-" * 58)
-
-    print(f"{'Param devices':<26} | {devices}")
-    print(f"{'Param dtypes':<26} | {dtypes}")
-    print()
-
-    input('stop')          
+        print(f"{'SAM (frozen)':<26} | {sam_params:,} ({sam_params/1e6:.2f}M) — {sam_role}")
+    print("-" * 58)
+    print()          
           
 
 if __name__ == '__main__':
@@ -281,7 +233,6 @@ is replaced by a lightweight aggregator for efficient deployment.
 
 For usage examples, see README.md
 ============================================================\n""", formatter_class=argparse.RawDescriptionHelpFormatter)
-
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
     parser.add_argument('--strict_determinism', type=str2bool, default=False, help='Enable strict determinism (slower but reproducible). Use True for final thesis experiments.')
     parser.add_argument('--experiment_name', required=True, help='Experiment name (required)')
@@ -308,12 +259,14 @@ For usage examples, see README.md
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
-    parser.add_argument('--phase_2_mode', type=str, choices=['single', 'two_stage'], default='two_stage', help='Phase 2 structure: "single" or "two_stage"')
-    parser.add_argument('--two_stage_scenario', type=int, choices=[1, 2, 3, 4, 5], default=1, help='Two-stage scenario: T1(agg/SAM→all/GT), T2(agg/SAM→all/mixed), T3(agg/SAM→agg/GT), T4(agg/mixed→all/mixed), T5(agg/mixed→all/GT)')
-    parser.add_argument('--stage', type=int, choices=[1, 2], default=1, help='Current stage: 1 (distillation) or 2 (finetune)')
-    parser.add_argument('--distill_weight', type=float, default=0.5, help='Alpha weight for mixed loss: loss = alpha * l(p,sam) + (1-alpha) * l(p,gt)')
-    parser.add_argument('--single_scenario', type=int, choices=[1, 2, 3, 4], default=2, help='[single mode] 1=agg/GT, 2=all/GT, 3=agg/mixed, 4=all/mixed')
-    
+    parser.add_argument('--single_pl_trainable', type=str2bool, default=False, help='[single mode] Whether prompt learner (backbone+decoder) is trainable')
+    parser.add_argument('--single_loss_type', type=str, choices=['gt', 'mixed'], default='gt', help='[single mode] Loss: gt (vs ground truth) or mixed (vs sam+gt)')
+    parser.add_argument('--single_distill_weight', type=float, default=0.5, help='[single mode, mixed loss] alpha weight: loss = alpha*l(p,sam) + (1-alpha)*l(p,gt)')
+    parser.add_argument('--stage', type=int, choices=[1, 2], default=1, help='[two_stage mode] Stage 1 (distillation) or Stage 2 (finetune)')
+    parser.add_argument('--stage1_loss_type', type=str, choices=['sam', 'mixed'], default='sam', help='[two_stage, stage 1] Loss: sam (vs sam output) or mixed (vs sam+gt)')
+    parser.add_argument('--stage1_distill_weight', type=float, default=0.5, help='[two_stage, stage 1, mixed loss] alpha weight')
+    parser.add_argument('--phase_2_mode', type=str, choices=['single', 'two_stage'], default='two_stage', help='Phase 2 mode: single-stage or two-stage')
+
     print(parser.description)
     args = vars(parser.parse_args())
 
@@ -333,7 +286,11 @@ For usage examples, see README.md
     args['vis_folder'] = saver.vis_dir
     args['wandb_info'] = saver.wandb_info
 
-    if args['use_sam']:
+    if args['use_sam']: sam_needed = True
+    elif args['phase_2_mode'] == 'single': sam_needed = (args['single_loss_type'] == 'mixed')
+    else: sam_needed = (args['stage'] == 1)
+
+    if sam_needed:
         sam_ckpt = os.path.join(PROJECT_DIR, 'cp', f"{args['sam_ckpt']}.pth")
         if not os.path.exists(sam_ckpt): raise FileNotFoundError(f"SAM checkpoint not found: {sam_ckpt}\n Please download {args['sam_ckpt']}.pth into the cp/ folder.")
     
