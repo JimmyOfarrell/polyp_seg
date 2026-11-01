@@ -146,19 +146,16 @@ class Saver:
                 },
             },
         )
-    
+
     @torch.no_grad()
     def log_samples_2d(self, images, masks, ground_truth, step, name, phase):
         if not self.wandb_enabled: return
 
         if masks.dim() == 4:
-            if masks.shape[1] != 1:
-                raise ValueError(f"log_samples_2d expects masks with 1 channel, got shape {tuple(masks.shape)}. Extract polyp channel first.")
+            if masks.shape[1] != 1: raise ValueError(f"log_samples_2d expects masks with 1 channel, got shape {tuple(masks.shape)}. Extract polyp channel first.")
             masks = masks.squeeze(1)
         if ground_truth.dim() == 4:
-            if ground_truth.shape[1] != 1:
-                raise ValueError(
-                    f"log_samples_2d expects ground_truth with 1 channel, got shape {tuple(ground_truth.shape)}.")
+            if ground_truth.shape[1] != 1: raise ValueError(f"log_samples_2d expects ground_truth with 1 channel, got shape {tuple(ground_truth.shape)}.")
             ground_truth = ground_truth.squeeze(1)
 
         imgs_hwc = images.detach().float().permute(0, 2, 3, 1).cpu().numpy()

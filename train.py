@@ -111,21 +111,45 @@ def train_single_epoch(train_context, epoch):
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
                 pred_2d = onehot_masks[:, 1].detach()
                 gt_2d   = gts_resized.squeeze(1).detach()
-                saver.log_samples_2d(imgs_resized.detach(), pred_2d, gt_2d, step=epoch, name=f"batch{ix}", phase='train')
+                max_images_to_log = 4
+                n_log = min(max_images_to_log, imgs_resized.shape[0])
+                saver.log_samples_2d(imgs_resized[:n_log].detach(), pred_2d[:n_log].detach(), gt_2d[:n_log].detach(), step=epoch, name=f"batch_{ix}", phase='train')
 
             
-            diceMetric(onehot_masks, onehot_gts)
-            iouMetric(onehot_masks, onehot_gts)
-            dice = diceMetric.aggregate().item()
-            iou = iouMetric.aggregate().item()
+            dice_metric_include_background(onehot_masks, onehot_gts)
+            dice_metric_exclude_background(onehot_masks, onehot_gts)
+            dice_incl = dice_metric_include_background.aggregate().item()
+            dice_excl = dice_metric_exclude_background.aggregate().item()
+
+            iou_metric_include_background(onehot_masks, onehot_gts)
+            iou_metric_exclude_background(onehot_masks, onehot_gts)
+            iou_incl = iou_metric_include_background.aggregate().item()
+            iou_excl = iou_metric_exclude_background.aggregate().item()
+
+            dice_list_incl.append(dice_incl)
+            dice_list_excl.append(dice_excl)
+            iou_list_incl.append(iou_incl)
+            iou_list_excl.append(iou_excl)
+
+            dice_metric_include_background.reset()
+            dice_metric_exclude_background.reset()
+            iou_metric_include_background.reset()
+            iou_metric_exclude_background.reset()
 
             if masks.shape[1] == 1: loss = criterion(masks, gts_resized)
-            elif masks.shape[1] == 2: loss = criterion(masks, onehot_gts)
+            elif masks.shape[1] == 2:
+                if sam_onehot is None: loss = criterion(masks, onehot_gts)
+                elif loss_type == 'gt': loss = criterion(masks, onehot_gts)
+                elif loss_type == 'sam': loss = criterion(masks, sam_onehot)
+                elif loss_type == 'mixed':
+                    alpha = distill_alpha if distill_alpha is not None else 0.5
+                    loss_gt = criterion(masks, onehot_gts)
+                    loss_sam = criterion(masks, sam_onehot)
+                    loss = alpha * loss_sam + (1 - alpha) * loss_gt
+                else: raise ValueError(f"Unsupported loss_type '{loss_type}'. Choose from: 'gt', 'sam', 'mixed'.")
             else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
             
             loss_list.append(loss.item())
-            iou_list.append(iou)
-            dice_list.append(dice)
 
             accum_loss = loss / acc_steps
         
@@ -140,10 +164,19 @@ def train_single_epoch(train_context, epoch):
                 if args.get('scheduler') == 'ReduceLROnPlateau': scheduler.step(loss.item())
                 else: scheduler.step()
         
-        pbar.set_description(f'(train | polyp) epoch {epoch} | (loss: {np.mean(loss_list):.4f}) | (dice: {np.mean(dice_list):.4f}) | (iou: {np.mean(iou_list):.4f})')
-        diceMetric.reset()
-        iouMetric.reset()
+        pbar.set_description(
+            f'(train | polyp) E{epoch} | '
+            f'loss: {np.nanmean(loss_list):.4f} | '
+            f'dice_incl: {np.nanmean(dice_list_incl):.4f} | '
+            f'dice_excl: {np.nanmean(dice_list_excl):.4f} | '
+            f'iou_incl: {np.nanmean(iou_list_incl):.4f} | '
+            f'iou_excl: {np.nanmean(iou_list_excl):.4f}')
 
     if use_scheduler: saver.log_scalar('learning_rate_end', optimizer.param_groups[0]['lr'], epoch, log_to_csv=False)
 
-    return np.mean(loss_list), np.mean(dice_list), np.mean(iou_list)
+    return {
+    'loss':                    float(np.nanmean(loss_list)),
+    'dice_exclude_background': float(np.nanmean(dice_list_excl)),
+    'dice_include_background': float(np.nanmean(dice_list_incl)),
+    'iou_exclude_background':  float(np.nanmean(iou_list_excl)),
+    'iou_include_background':  float(np.nanmean(iou_list_incl))}

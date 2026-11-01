@@ -331,9 +331,24 @@ def main(args=None, sam_args=None, saver=None):
 
     for epoch in range(num_epochs):
         train_metrics = train_single_epoch(train_context, epoch)
-        train_loss = train_metrics['loss']
-        train_dice_exclude_bg = train_metrics['dice_exclude_background']
-        train_iou_exclude_bg = train_metrics['iou_exclude_background']          
+        train_loss        = train_metrics['loss']
+        train_dice_excl   = train_metrics['dice_exclude_background']
+        train_dice_incl   = train_metrics['dice_include_background']
+        train_iou_excl    = train_metrics['iou_exclude_background']
+        train_iou_incl    = train_metrics['iou_include_background']
+
+        saver.log_scalar('train_loss',        train_loss,      epoch)
+        saver.log_scalar('train_dice_excl',   train_dice_excl, epoch)
+        saver.log_scalar('train_dice_incl',   train_dice_incl, epoch)
+        saver.log_scalar('train_iou_excl',    train_iou_excl,  epoch)
+        saver.log_scalar('train_iou_incl',    train_iou_incl,  epoch)
+        
+        print(f"[MAIN] [Epoch {epoch}] "
+          f"train_loss={train_loss:.4f} | "
+          f"train_dice_excl={train_dice_excl:.4f} | "
+          f"train_dice_incl={train_dice_incl:.4f} | "
+          f"train_iou_excl={train_iou_excl:.4f} | "
+          f"train_iou_incl={train_iou_incl:.4f}\n")         
           
 
 if __name__ == '__main__':
