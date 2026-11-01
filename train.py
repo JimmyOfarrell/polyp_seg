@@ -9,50 +9,59 @@ from utils.model_utils import sam_call
 import torch.nn.functional as F
 from torch.amp import autocast
 
-def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler=None, scaler=None, use_amp=True):
+def train_single_epoch(train_context, epoch):
+    train_dataloader = train_context['dataloader']
+    model = train_context['model']
+    sam = train_context['sam']
+    optimizer = train_context['optimizer']
+    args = train_context['args']
+    saver = train_context['saver']
+    scheduler = train_context['scheduler']
+    scaler = train_context['scaler']
+    use_amp = train_context['use_amp']
+    device = train_context['device']
+
     model.train()
     if sam is not None: sam.eval()
 
-    threshold = args.get('threshold_discretize', 0.5)
-    include_bg = args.get('include_background', False)
-    net_name = args.get('net', 'HardNetSegmentor')
-    use_std_net = args.get('use_standard_net', False)
+    threshold = args['threshold_discretize']
+    include_bg = args['include_background']
+    use_aggregator = args['use_aggregator']
+    loss_type = args['loss_type']
+    distill_alpha = args['distill_alpha']
+    norm_mode = args['norm_mode']
+    input_size = args['input_size']
+    use_scheduler = args['use_scheduler']
+    image_key = args['image_key']
+    mask_key = args['mask_key']
+    acc_steps = args['acc_steps']
+
+    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_aggregator)
 
     one_hot = AsDiscrete(to_onehot=2, dim=1)
     post_trans = AsDiscrete(threshold=threshold)
     sigmoid = Activations(sigmoid=True)
-    
-    diceMetric = DiceMetric(include_background=include_bg, reduction='mean')
-    iouMetric = MeanIoU(include_background=include_bg, reduction='mean')
 
-    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_std_net)
+    dice_metric_include_background = DiceMetric(include_background=True, reduction='mean')
+    dice_metric_exclude_background = DiceMetric(include_background=False, reduction='mean')
+    iou_metric_include_background = MeanIoU(include_background=True, reduction='mean')
+    iou_metric_exclude_background = MeanIoU(include_background=False, reduction='mean')
 
-    if use_std_net:
-        finetune_bb = args.get('segmentor_finetune_backbone', False)
-        phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
-    else: phase_str = "1 (SAM-guided)"
-
-    
-    iou_list, dice_list, loss_list = [], [], []
-    pbar = tqdm(train_dataloader, desc=f"Train E{epoch}")
-
-    criterion_name = args.get('criterion', 'dice_ce')
+    criterion_name = args['criterion']
     if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'. Choose from: 'dice', 'dice_ce'.")
-    if epoch == 0:
-        print()
-        print(f"[TRAIN] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name} | threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
-    
-    Idim = int(args.get('Idim', 512))
-    optimizer.zero_grad()
-    use_scheduler = args.get('use_scheduler', False)
-    image_key = args.get('image_key', 'image')
-    mask_key = args.get('mask_key', 'mask')
-    total_batches = len(train_dataloader)
-    acc_steps = int(args.get('acc_steps', 4))
 
-    if use_scheduler : saver.log_loss('lr', optimizer.param_groups[0]['lr'], epoch)
+    total_batches = len(train_dataloader)
+    dice_list_incl, dice_list_excl = [], []
+    iou_list_incl, iou_list_excl = [], []
+    loss_list = []
+
+    pbar = tqdm(train_dataloader, desc=f"Train E{epoch}")
+    
+    if use_scheduler : saver.log_scalar('learning_rate', optimizer.param_groups[0]['lr'], epoch, log_to_csv=False)
+    optimizer.zero_grad()
+    input('Press Enter to start training...')
 
     for ix,  sample in enumerate(pbar):      
         imgs = sample[image_key]
@@ -67,10 +76,10 @@ def train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, sav
         
         with autocast('cuda', enabled=use_amp):
             if sam is not None:
-                orig_imgs_small = F.interpolate(orig_imgs, size=(Idim, Idim), mode='bilinear', align_corners=False)
+                orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
-                norm_mode = args.get('norm_mode', 'minmax')
+                
                 masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
             else: masks = model(orig_imgs)
 

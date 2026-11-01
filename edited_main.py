@@ -1,7 +1,7 @@
 import wandb
 
 
-from train import train_single_epoch
+
 from inference import inference_dataloader
 from utils.saver import Saver
 
@@ -22,18 +22,11 @@ def main(args=None, sam_args=None, saver=None):
 
     
         
-    best = -1.0
-    best_metric_name = args['best_metric']  
-    saver.create_best_csv(best_metric_name)                    
-    print(f"[MAIN] Tracking best model by '{best_metric_name}' in: {saver.best_csv_file}")
+    
 
-    device_is_cuda = getattr(args['device'], 'type', 'cpu') == 'cuda'
-    use_amp = bool(use_cuda_amp) and cuda_available and device_is_cuda
-    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
-    print(f"[MAIN] AMP enabled: {use_amp} (requested={requested_cuda_amp}, cuda_available={cuda_available}, device={device})", '\n')
+    
 
-    for epoch in range(num_epochs):
-        avg_loss, avg_dice, avg_iou= train_single_epoch(train_dataloader, model, sam, optimizer, epoch, args, saver, scheduler, scaler, use_amp)
+    
         saver.log_loss('train_loss', avg_loss, epoch)
         saver.log_loss('train_dice', avg_dice, epoch)
         saver.log_loss('train_iou', avg_iou, epoch)
@@ -66,26 +59,11 @@ def main(args=None, sam_args=None, saver=None):
     print(f"[MAIN] ✓ Training complete. Best metric: {best:.4f}")
     
 if __name__ == '__main__':
-    
-    
-    parser.add_argument('--best_metric', type=str, default='dice_f', choices=['dice_f', 'dice_t', 'iou'], help='Best metric')
-    
-    
-   
-    
-    
-    
-    
-    
-    
+
 
     
     
-
-    parser.add_argument('--threshold_discretize', type=float, default=0.5, help='Threshold for binarization')
-    parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
-    parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
-    parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
+    
     parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save training images to WandB')
     
     parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save validation images to WandB')

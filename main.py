@@ -11,6 +11,7 @@ from utils.utils import disable_batchnorm_running_stats, str2bool, set_seed
 from utils.model_utils import get_model, get_standard_model
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
+from train import train_single_epoch
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -295,7 +296,6 @@ def main(args=None, sam_args=None, saver=None):
         scheduler = None
         print("[SCHED] No scheduler (constant LR)")
     print()
-    input('stop')
 
     if args['wandb_watch']:
         if getattr(saver, 'wandb_enabled', False):
@@ -306,7 +306,34 @@ def main(args=None, sam_args=None, saver=None):
             except Exception as e: print(f"[WARNING] wandb.watch failed: {type(e).__name__}: {e}")        
         else: print("[MAIN] --wandb_watch requested but W&B disabled — skipping.\n")  
 
-    input('stop')          
+    best = -1.0
+    best_metric_name = args['best_metric']  
+    saver.create_best_csv(best_metric_name)                    
+    print(f"[MAIN] Tracking best model by '{best_metric_name}' in: {saver.best_csv_file}")
+
+    device_is_cuda = getattr(args['device'], 'type', 'cpu') == 'cuda'
+    use_amp = bool(use_cuda_amp) and cuda_available and device_is_cuda
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+    print(f"[MAIN] AMP enabled: {use_amp} (requested={requested_cuda_amp}, cuda_available={cuda_available}, device={device})\n")
+
+    train_context = {
+    'dataloader': train_dataloader,
+    'model': model,
+    'sam': sam,
+    'optimizer': optimizer,
+    'device': device,
+    'args': args,
+    'saver': saver,
+    'scheduler': scheduler,
+    'scaler': scaler,
+    'use_amp': use_amp,
+}
+
+    for epoch in range(num_epochs):
+        train_metrics = train_single_epoch(train_context, epoch)
+        train_loss = train_metrics['loss']
+        train_dice_exclude_bg = train_metrics['dice_exclude_background']
+        train_iou_exclude_bg = train_metrics['iou_exclude_background']          
           
 
 if __name__ == '__main__':
@@ -385,6 +412,11 @@ For usage examples, see README.md
     parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Enable WandB watch')
     parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
     parser.add_argument('--acc_steps', type=int, default=2, help='Gradient accumulation steps')
+    parser.add_argument('--best_metric', type=str, default='dice_exclude_background', choices=['dice_exclude_background', 'dice_include_background', 'iou'], help='Best metric')
+    parser.add_argument('--threshold_discretize', type=float, default=0.5, help='Threshold for binarization')
+    parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
+    parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
+    parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
 
     print(parser.description)
     args = vars(parser.parse_args())

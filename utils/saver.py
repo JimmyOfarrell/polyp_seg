@@ -113,13 +113,18 @@ class Saver:
         except Exception as e: print(f"[ERROR] Failed to save hparams.json: {type(e).__name__}: {e}")
         print()
 
-
     def create_best_csv(self, best_metric):
         self.best_csv_file = os.path.join(self.experiment_dir, 'best.csv')
         with open(self.best_csv_file, 'w', encoding='utf-8', newline='') as f: csv.writer(f).writerow(['epoch', best_metric])
         print(f"[SAVER] Best CSV created: {self.best_csv_file}")
-        return self.best_csv_file
        
+    def log_scalar(self, name, value, iter_n, log_to_csv=True):
+        self.writer.add_scalar(name, value, iter_n)
+        if self.wandb_enabled:
+            try: wandb.log({name: value, "epoch": iter_n}, step=iter_n)
+            except Exception as e: print(f"[WARNING] wandb.log failed for '{name}': {type(e).__name__}: {e}")
+        if log_to_csv:
+            with open(self.metrics_csv_file, 'a', encoding='utf-8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
 
     def log_best(self, epoch, best_value):
         with open(self.best_csv_file, 'a', encoding='utf-8', newline='') as f:
@@ -170,12 +175,6 @@ class Saver:
             wandb_img = self.wb_mask(imgs_hwc[b], masks_np[b], gt_np[b])
             wandb.log({f"Segmentation/{phase}/{name}/sample_{b}": wandb_img}, step=step)
 
-    def log_loss(self, name, value, iter_n):
-            self.writer.add_scalar(name, value, iter_n)
-            if self.wandb_enabled:
-                try: wandb.log({name: value, "EPOCH": iter_n}, step=iter_n)
-                except Exception as e: print(f"[WARNING] wandb.log failed for '{name}': {type(e).__name__}: {e}")
-            with open(self.metrics_csv_file, 'a', encoding='utf-8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
 
     def save_model(self, net, name, step, fixed_name = False):
         filename = f'{name}.pth' if fixed_name else f'{name}_{step:05d}.pth'
