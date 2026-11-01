@@ -303,7 +303,7 @@ def main(args=None, sam_args=None, saver=None):
                 wandb_watch_freq = args['wandb_watch_freq']
                 wandb.watch(model, log='all', log_freq=wandb_watch_freq, log_graph=True)
                 print(f"[MAIN] WandB watch enabled | log=all | freq={wandb_watch_freq}\n")
-            except Exception as e: print(f"[WARN] wandb.watch failed: {type(e).__name__}: {e}")        
+            except Exception as e: print(f"[WARNING] wandb.watch failed: {type(e).__name__}: {e}")        
         else: print("[MAIN] --wandb_watch requested but W&B disabled — skipping.\n")  
 
     input('stop')          
@@ -384,6 +384,7 @@ For usage examples, see README.md
     parser.add_argument('--schedWarmupCos_last_epoch', type=int, default=-1, help='WarmupCosineSchedule last_epoch (use only if you are resuming a training)')
     parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Enable WandB watch')
     parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
+    parser.add_argument('--acc_steps', type=int, default=2, help='Gradient accumulation steps')
 
     print(parser.description)
     args = vars(parser.parse_args())
