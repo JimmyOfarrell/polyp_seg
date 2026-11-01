@@ -179,15 +179,16 @@ def main(args=None, sam_args=None, saver=None):
     n_dec    = sum(p.numel() for p in model.decoder.parameters()) if hasattr(model, 'decoder') else 0
     n_seg_tr = sum(p.numel() for p in model.segmentor.parameters() if p.requires_grad) if getattr(model, 'segmentor', None) is not None else 0
     n_seg    = sum(p.numel() for p in model.segmentor.parameters()) if getattr(model, 'segmentor', None) is not None else 0
-
+    has_aggregator = getattr(model, 'segmentor', None) is not None
+    aggregator_status = 'N/A (no aggregator)' if not has_aggregator else 'trainable'
     print(f"[MAIN] {scenario_label}")
     print(f"[MAIN] ─────────────────────────────────────────────────────")
     print(f"[MAIN] Prompt Learner   : {pl_status}")
-    print(f"[MAIN] Aggregator       : {'trainable' if config['trainable'] in ('aggregator', 'all') else 'N/A'}")
+    print(f"[MAIN] Aggregator       : {aggregator_status}")
     print(f"[MAIN] SAM loaded       : {'Yes' if sam_needed else 'No'}")
     print(f"[MAIN] Loss             : {loss_desc}")
-    if distill_alpha is not None:
-        print(f"[MAIN] distill alpha    : {distill_alpha}")
+    print(f"[MAIN] Input resolution : {img_dim}x{img_dim}")
+    if distill_alpha is not None: print(f"[MAIN] distill alpha    : {distill_alpha}")
     print(f"[MAIN] Trainable params : {n_trainable:,} / {n_total:,} ({train_ratio:.2f}%)")
     print()
 
@@ -197,6 +198,7 @@ def main(args=None, sam_args=None, saver=None):
     print("-" * 58)
     print(f"{'Phase':<26} | {scenario_label}")
     print(f"{'Model type':<26} | {type(model).__name__}")
+    print(f"{'Input resolution':<26} | {img_dim}x{img_dim}")
     print(f"{'Total params':<26} | {n_total:,} ({n_total/1e6:.2f}M)")
     print(f"{'Trainable params':<26} | {n_trainable:,} ({n_trainable/1e6:.2f}M)")
     print(f"{'Frozen params':<26} | {n_frozen:,} ({n_frozen/1e6:.2f}M)")
