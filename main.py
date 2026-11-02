@@ -12,6 +12,7 @@ from utils.model_utils import get_model, get_standard_model
 from utils.dataset_utils import get_train_val_dataloaders
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 from train import train_single_epoch
+from inference import inference_dataloader
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -316,39 +317,68 @@ def main(args=None, sam_args=None, saver=None):
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
     print(f"[MAIN] AMP enabled: {use_amp} (requested={requested_cuda_amp}, cuda_available={cuda_available}, device={device})\n")
 
-    train_context = {
-    'dataloader': train_dataloader,
-    'model': model,
-    'sam': sam,
-    'optimizer': optimizer,
-    'device': device,
-    'args': args,
-    'saver': saver,
-    'scheduler': scheduler,
-    'scaler': scaler,
-    'use_amp': use_amp,
-}
+    train_context = {'dataloader': train_dataloader, 'model': model, 'sam': sam, 'optimizer': optimizer,
+                     'device': device, 'args': args, 'saver': saver, 'scheduler': scheduler, 'scaler': scaler,
+                     'use_amp': use_amp,}
+
+    val_context = {'dataloader': val_dataloader, 'model': model, 'sam': sam, 'device': device, 'args': args, 'saver': saver, 'use_amp': use_amp}
 
     for epoch in range(num_epochs):
         train_metrics = train_single_epoch(train_context, epoch)
-        train_loss        = train_metrics['loss']
-        train_dice_excl   = train_metrics['dice_exclude_background']
-        train_dice_incl   = train_metrics['dice_include_background']
-        train_iou_excl    = train_metrics['iou_exclude_background']
-        train_iou_incl    = train_metrics['iou_include_background']
+        train_loss = train_metrics['loss']
+        train_dice_incl = train_metrics['dice_include_background']
+        train_dice_excl = train_metrics['dice_exclude_background']
+        train_iou_incl = train_metrics['iou_include_background']
+        train_iou_excl = train_metrics['iou_exclude_background']
 
-        saver.log_scalar('train_loss',        train_loss,      epoch)
-        saver.log_scalar('train_dice_excl',   train_dice_excl, epoch)
-        saver.log_scalar('train_dice_incl',   train_dice_incl, epoch)
-        saver.log_scalar('train_iou_excl',    train_iou_excl,  epoch)
-        saver.log_scalar('train_iou_incl',    train_iou_incl,  epoch)
+        saver.log_scalar('train_loss', train_loss, epoch)
+        saver.log_scalar('train_dice_include_background', train_dice_incl, epoch)
+        saver.log_scalar('train_dice_exclude_background', train_dice_excl, epoch)
+        saver.log_scalar('train_iou_include_background', train_iou_incl, epoch)
+        saver.log_scalar('train_iou_exclude_background', train_iou_excl, epoch)
         
         print(f"[MAIN] [Epoch {epoch}] "
           f"train_loss={train_loss:.4f} | "
-          f"train_dice_excl={train_dice_excl:.4f} | "
           f"train_dice_incl={train_dice_incl:.4f} | "
-          f"train_iou_excl={train_iou_excl:.4f} | "
-          f"train_iou_incl={train_iou_incl:.4f}\n")         
+          f"train_dice_excl={train_dice_excl:.4f} | "
+          f"train_iou_incl={train_iou_incl:.4f} | "
+          f"train_iou_excl={train_iou_excl:.4f}\n")
+
+        val_metrics = inference_dataloader(val_context, epoch)
+        val_loss = val_metrics['loss']
+        val_dice_excl = val_metrics['dice_exclude_background']
+        val_dice_incl = val_metrics['dice_include_background']
+        val_iou_excl  = val_metrics['iou_exclude_background']
+        val_iou_incl  = val_metrics['iou_include_background']
+
+        saver.log_scalar('val_loss', val_loss, epoch)
+        saver.log_scalar('val_dice_include_background', val_dice_incl, epoch)
+        saver.log_scalar('val_dice_exclude_background', val_dice_excl, epoch)
+        saver.log_scalar('val_iou_include_background', val_iou_incl, epoch)
+        saver.log_scalar('val_iou_exclude_background', val_iou_excl, epoch)
+
+        print(f"[MAIN] [Epoch {epoch}] "
+          f"val_loss={val_loss:.4f} | "
+          f"val_dice_incl={val_dice_incl:.4f} | "
+          f"val_dice_excl={val_dice_excl:.4f} | "
+          f"val_iou_incl={val_iou_incl:.4f} | "
+          f"val_iou_excl={val_iou_excl:.4f}\n")
+        
+        if best_metric_name == 'dice_exclude_background': metric = val_dice_excl
+        elif best_metric_name == 'dice_include_background': metric = val_dice_incl
+        elif best_metric_name == 'iou_exclude_background': metric = val_iou_excl
+        elif best_metric_name == 'iou_include_background': metric = val_iou_incl
+        else: raise ValueError(f"Unsupported best_metric '{best_metric_name}'. Choose from: 'dice_exclude_background', 'dice_include_background', 'iou_exclude_background', 'iou_include_background'.")  
+
+        if metric > best:
+            torch.save(model.state_dict(), args['best_ckpt_path'])
+            best = metric
+            print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
+            saver.log_best(epoch, best)
+        print()
+    if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
+        
+    print(f"[MAIN] ✓ Training complete. Best {best_metric_name} = {best:.4f}") 
           
 
 if __name__ == '__main__':
@@ -427,12 +457,14 @@ For usage examples, see README.md
     parser.add_argument('--wandb_watch', type=str2bool, default=False, help='Enable WandB watch')
     parser.add_argument('--wandb_watch_freq', type=int, default=10, help='Wandb watch frequency')
     parser.add_argument('--acc_steps', type=int, default=2, help='Gradient accumulation steps')
-    parser.add_argument('--best_metric', type=str, default='dice_exclude_background', choices=['dice_exclude_background', 'dice_include_background', 'iou'], help='Best metric')
+    parser.add_argument('--best_metric', type=str, default='dice_exclude_background', choices=['dice_exclude_background', 'dice_include_background', 'iou_exclude_background', 'iou_include_background'], help='Best metric')
     parser.add_argument('--threshold_discretize', type=float, default=0.5, help='Threshold for binarization')
     parser.add_argument('--include_background', type=str2bool, default=False, help='Include background class in loss')
     parser.add_argument('--criterion', type=str, default='dice_ce', choices=['dice', 'dice_ce'], help='Loss function')
     parser.add_argument('--norm_mode', type=str, default='minmax', choices=['minmax', 'sigmoid'], help='Normalization mode for SAM output in Phase 1')
     parser.add_argument('--save_train_images', type=str2bool, default=True, help='Save training images to WandB')
+    parser.add_argument('--save_val_images', type=str2bool, default=True, help='Save validation images to WandB')
+    parser.add_argument('--save_every', type=int, default=10, help='Save net_last checkpoint every N epochs (also saves at last epoch)')
 
     print(parser.description)
     args = vars(parser.parse_args())

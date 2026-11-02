@@ -126,11 +126,6 @@ class Saver:
         if log_to_csv:
             with open(self.metrics_csv_file, 'a', encoding='utf-8', newline='') as f: csv.writer(f).writerow([name, iter_n, value])
 
-    def log_best(self, epoch, best_value):
-        with open(self.best_csv_file, 'a', encoding='utf-8', newline='') as f:
-            csv.writer(f).writerow([epoch, best_value])
-            f.flush()
-
     def wb_mask(self, img, mask, gt):
         pred_shifted = mask.astype(np.uint8) + 2
         return wandb.Image(
@@ -172,6 +167,10 @@ class Saver:
             wandb_img = self.wb_mask(imgs_hwc[b], masks_np[b], gt_np[b])
             wandb.log({f"Segmentation/{phase}/{name}/sample_{b}": wandb_img}, step=step)
 
+    def log_best(self, epoch, best_value):
+        with open(self.best_csv_file, 'a', encoding='utf-8', newline='') as f:
+            csv.writer(f).writerow([epoch, best_value])
+            f.flush()
 
     def save_model(self, net, name, step, fixed_name = False):
         filename = f'{name}.pth' if fixed_name else f'{name}_{step:05d}.pth'
@@ -179,7 +178,7 @@ class Saver:
         torch.save(net.state_dict(), path)
         print(f"[SAVER] Checkpoint saved: {path}")
         return path        
-    
+
     @torch.no_grad()
     def save_batch(self, images, name, step, remove_batch_dim=True, subfolder='', cmap=None, normalize=False):
         os.makedirs(os.path.join(self.vis_dir, subfolder), exist_ok=True)
@@ -204,7 +203,6 @@ class Saver:
             images = torch.from_numpy(color_imgs).float() / 255.0
             
         torchvision.utils.save_image(images, os.path.join(self.vis_dir, subfolder, f'{name}_{step}.png'))
-    
 
     def save_data(self,data,name, subfolder=''):
         os.makedirs(os.path.join(self.experiment_dir, subfolder), exist_ok=True)

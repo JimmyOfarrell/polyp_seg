@@ -10,45 +10,47 @@ import torch.nn.functional as F
 from torch.amp import autocast
 
 @torch.no_grad()
-def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
-    pbar = tqdm(val_dataloader, desc=f"Val E{epoch}")
+def inference_dataloader(val_context, epoch):
+    val_dataloader = val_context['dataloader']
+    model = val_context['model']
+    sam = val_context['sam']
+    device = val_context['device']
+    args = val_context['args']
+    saver = val_context['saver']
+    use_amp = val_context['use_amp']
+
     model.eval()
     if sam is not None: sam.eval()
 
     threshold  = args['threshold_discretize']
     include_bg = args['include_background']
-    use_standard_net = ['use_standard_net']
-    net_name = args.get('net', 'HardNetSegmentor')
-    input_resolution = int(args['Idim'])
+    use_aggregator = args['use_aggregator']
+    input_size = args['input_size']
     image_key, mask_key = args['image_key'], args['mask_key']
     norm_mode = args['norm_mode']
-    use_amp = args.get('use_cuda_amp', False) and torch.cuda.is_available()
 
-    one_hot     = AsDiscrete(to_onehot=2, dim=1)     
-    post_trans  = AsDiscrete(threshold=threshold)         
-    sigmoid     = Activations(sigmoid=True)
+    apply_sigm = True
 
-    diceMetric_true  = DiceMetric(include_background=True,  reduction='mean')
-    diceMetric_false = DiceMetric(include_background=False, reduction='mean')
-    iouMetric = MeanIoU(include_background=include_bg, reduction='mean')
-    
-    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_standard_net)
+    one_hot = AsDiscrete(to_onehot=2, dim=1)     
+    post_trans = AsDiscrete(threshold=threshold)         
+    sigmoid = Activations(sigmoid=True)
 
-    criterion_name = args.get('criterion', 'dice_ce')
+    dice_metric_include_background = DiceMetric(include_background=True, reduction='mean')
+    dice_metric_exclude_background = DiceMetric(include_background=False, reduction='mean')
+    iou_metric_include_background = MeanIoU(include_background=True, reduction='mean')
+    iou_metric_exclude_background = MeanIoU(include_background=False, reduction='mean')
+
+    criterion_name = args['criterion']
     if criterion_name == 'dice': criterion = DiceLoss(include_background=include_bg, sigmoid=apply_sigm)
     elif criterion_name == 'dice_ce': criterion = DiceCELoss(include_background=include_bg, sigmoid=apply_sigm)
     else: raise ValueError(f"Unsupported criterion '{criterion_name}'.")
 
-    if use_standard_net:
-        finetune_bb = args.get('segmentor_finetune_backbone', False)
-        phase_str = f"2{'a (warm-up)' if not finetune_bb else 'b (joint)'}"
-    else: phase_str = "1 (SAM-guided)"
 
-    if epoch == 0:
-            print()
-            print(f"[VALIDATION] Epoch {epoch} | net={net_name} | Phase={phase_str} | Loss: {criterion_name} | threshold={threshold} | include_bg={include_bg} | apply_sigm={apply_sigm}", '\n')
+    dice_list_incl, dice_list_excl = [], []
+    iou_list_incl, iou_list_excl = [], []
+    loss_list = []
 
-    iou_list, dice_list_true, dice_list_false, loss_list = [], [], [], []
+    pbar = tqdm(val_dataloader, desc=f"Val E{epoch}")
     
     for ix,  sample in enumerate(pbar):
         imgs = sample[image_key]
@@ -57,22 +59,24 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
         if batch_size != 1: raise ValueError(f"Val batch_size must be 1, got {imgs.shape[0]}. Check val_dataloader.")
         original_sz_batch = sample['original_shape']
         img_sz = torch.tensor(imgs.shape[2:]).repeat(batch_size, 1)
-        orig_imgs = imgs.to(args['device'], non_blocking=True)
-        gts       = gts.to(args['device'], non_blocking=True)
+        orig_imgs = imgs.to(device, non_blocking=True)
+        gts = gts.to(device, non_blocking=True)
 
         with autocast('cuda', enabled=use_amp):
-            if sam is not None:
-                orig_imgs_small = F.interpolate(orig_imgs, size=(input_resolution, input_resolution), mode='bilinear', align_corners=False)
+            orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
+            if not use_aggregator:
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz_batch, img_sz)
-                masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
-            else: masks = model(orig_imgs)
+                masks = sam_call(batched_input, sam, dense_embeddings)
+            else: masks = model(orig_imgs_small)
 
             size = masks.shape[2:]
             gts_resized = F.interpolate(gts, size=size, mode='nearest')
             onehot_gts = one_hot(post_trans(gts_resized))
             
-            if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
+            if masks.shape[1] == 1:
+                masks_prob = sigmoid(masks)
+                onehot_masks = one_hot(post_trans(masks_prob))
             elif masks.shape[1] == 2:
                 probs = sigmoid(masks) if apply_sigm else masks
                 pred_polyp = post_trans(probs[:, 1:2])
@@ -80,24 +84,33 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
             else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
 
             
-            if (getattr(saver, 'wandb_enabled', False)) and args.get('save_val_images', False) and ix < 5 and epoch % 5 == 0:
+            if (getattr(saver, 'wandb_enabled', False)) and args['save_val_images'] and ix < 5 and epoch % 5 == 0:
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
                 pred_2d = onehot_masks[:, 1].detach()
                 gt_2d   = gts_resized.squeeze(1).detach()
-                saver.log_samples_2d(imgs_resized.detach(), pred_2d, gt_2d, step=epoch, name=f"sample{ix}", phase='val')
+                saver.log_samples_2d(imgs_resized.detach(), pred_2d, gt_2d, step=epoch, name=f"batch_{ix}", phase='val')
                 
-            diceMetric_true(onehot_masks, onehot_gts)
-            dice_true = diceMetric_true.aggregate().item()
+            dice_metric_include_background(onehot_masks, onehot_gts)
+            dice_include_background = dice_metric_include_background.aggregate().item()
 
-            diceMetric_false(onehot_masks, onehot_gts)
-            dice_false = diceMetric_false.aggregate().item()
+            dice_metric_exclude_background(onehot_masks, onehot_gts)
+            dice_exclude_background = dice_metric_exclude_background.aggregate().item()
 
-            iouMetric(onehot_masks, onehot_gts)
-            iou = iouMetric.aggregate().item()
+            iou_metric_include_background(onehot_masks, onehot_gts)
+            iou_include_background = iou_metric_include_background.aggregate().item()
 
-            iou_list.append(iou)
-            dice_list_true.append(dice_true)
-            dice_list_false.append(dice_false)
+            iou_metric_exclude_background(onehot_masks, onehot_gts)
+            iou_exclude_background = iou_metric_exclude_background.aggregate().item()
+
+            dice_list_incl.append(dice_include_background)
+            dice_list_excl.append(dice_exclude_background)
+            iou_list_incl.append(iou_include_background)
+            iou_list_excl.append(iou_exclude_background)
+
+            dice_metric_include_background.reset()
+            dice_metric_exclude_background.reset()
+            iou_metric_include_background.reset()
+            iou_metric_exclude_background.reset()
             
             
             if masks.shape[1] == 1: loss=criterion(masks, gts_resized)
@@ -106,10 +119,16 @@ def inference_dataloader(val_dataloader, model, sam, epoch, args, saver):
 
             loss_list.append(loss.item())
             
-        pbar.set_description(f'(val | polyp) epoch {epoch} | (loss {np.mean(loss_list):.4f}) | (DiceT {np.mean(dice_list_true):.4f}) | (DiceF {np.mean(dice_list_false):.4f}) | (iou {np.mean(iou_list):.4f})')
+        pbar.set_description(f'(val | polyp) E{epoch} | '
+                             f'loss: {np.nanmean(loss_list):.4f} | '
+                             f'dice_incl: {np.nanmean(dice_list_incl):.4f} | '
+                             f'dice_excl: {np.nanmean(dice_list_excl):.4f} | '
+                             f'iou_incl: {np.nanmean(iou_list_incl):.4f} | '
+                             f'iou_excl: {np.nanmean(iou_list_excl):.4f}')
         
-        iouMetric.reset()
-        diceMetric_true.reset()
-        diceMetric_false.reset()
-        
-    return np.mean(dice_list_true),np.mean(dice_list_false), np.mean(iou_list), np.mean(loss_list)
+    return {
+    'loss':                    float(np.nanmean(loss_list)),
+    'dice_exclude_background': float(np.nanmean(dice_list_excl)),
+    'dice_include_background': float(np.nanmean(dice_list_incl)),
+    'iou_exclude_background':  float(np.nanmean(iou_list_excl)),
+    'iou_include_background':  float(np.nanmean(iou_list_incl)),}

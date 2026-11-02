@@ -32,11 +32,10 @@ def train_single_epoch(train_context, epoch):
     norm_mode = args['norm_mode']
     input_size = args['input_size']
     use_scheduler = args['use_scheduler']
-    image_key = args['image_key']
-    mask_key = args['mask_key']
+    image_key, mask_key = args['image_key'], args['mask_key']
     acc_steps = args['acc_steps']
 
-    apply_sigm = bool(getattr(model, "is_segmentor", False) and use_aggregator)
+    apply_sigm = True
 
     one_hot = AsDiscrete(to_onehot=2, dim=1)
     post_trans = AsDiscrete(threshold=threshold)
@@ -76,7 +75,7 @@ def train_single_epoch(train_context, epoch):
                 orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
                 dense_embeddings = model(orig_imgs_small)
                 batched_input = get_input_dict(orig_imgs, original_sz, img_sz)
-                masks = norm_batch(sam_call(batched_input, sam, dense_embeddings), mode=norm_mode)
+                masks = sam_call(batched_input, sam, dense_embeddings)
                 sam_target = None
             elif sam is not None and use_aggregator:
                 orig_imgs_small = F.interpolate(orig_imgs, size=(input_size, input_size), mode='bilinear', align_corners=False)
@@ -94,7 +93,9 @@ def train_single_epoch(train_context, epoch):
             gts_resized = F.interpolate(gts, size=size, mode='nearest')
             onehot_gts=one_hot(post_trans(gts_resized))
 
-            if masks.shape[1] == 1: onehot_masks = one_hot(post_trans(masks))
+            if masks.shape[1] == 1:
+                masks_prob = sigmoid(masks)
+                onehot_masks = one_hot(post_trans(masks_prob))
             elif masks.shape[1] == 2:
                 probs = sigmoid(masks) if apply_sigm else masks
                 pred_polyp = post_trans(probs[:, 1:2])
@@ -107,7 +108,7 @@ def train_single_epoch(train_context, epoch):
                 sam_binary = post_trans(sam_target_resized)
                 sam_onehot = one_hot(sam_binary)    
             
-            if getattr(saver, 'wandb_enabled', False) and args.get('save_train_images', False) and ix < 10 and epoch % 5 == 0:
+            if getattr(saver, 'wandb_enabled', False) and args['save_train_images'] and ix < 10 and epoch % 5 == 0:
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
                 pred_2d = onehot_masks[:, 1].detach()
                 gt_2d   = gts_resized.squeeze(1).detach()
@@ -118,18 +119,18 @@ def train_single_epoch(train_context, epoch):
             
             dice_metric_include_background(onehot_masks, onehot_gts)
             dice_metric_exclude_background(onehot_masks, onehot_gts)
-            dice_incl = dice_metric_include_background.aggregate().item()
-            dice_excl = dice_metric_exclude_background.aggregate().item()
+            dice_include_background = dice_metric_include_background.aggregate().item()
+            dice_exclude_background = dice_metric_exclude_background.aggregate().item()
 
             iou_metric_include_background(onehot_masks, onehot_gts)
             iou_metric_exclude_background(onehot_masks, onehot_gts)
-            iou_incl = iou_metric_include_background.aggregate().item()
-            iou_excl = iou_metric_exclude_background.aggregate().item()
+            iou_include_background = iou_metric_include_background.aggregate().item()
+            iou_exclude_background = iou_metric_exclude_background.aggregate().item()
 
-            dice_list_incl.append(dice_incl)
-            dice_list_excl.append(dice_excl)
-            iou_list_incl.append(iou_incl)
-            iou_list_excl.append(iou_excl)
+            dice_list_incl.append(dice_include_background)
+            dice_list_excl.append(dice_exclude_background)
+            iou_list_incl.append(iou_include_background)
+            iou_list_excl.append(iou_exclude_background)
 
             dice_metric_include_background.reset()
             dice_metric_exclude_background.reset()
