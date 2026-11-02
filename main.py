@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 import math
 import wandb
+import time
 import argparse
 import os
 import sys
@@ -323,8 +324,11 @@ def main(args=None, sam_args=None, saver=None):
 
     val_context = {'dataloader': val_dataloader, 'model': model, 'sam': sam, 'device': device, 'args': args, 'saver': saver, 'use_amp': use_amp}
 
+    total_start = time.time()
     for epoch in range(num_epochs):
+        epoch_start = time.time()
         train_metrics = train_single_epoch(train_context, epoch)
+        train_time = time.time() - epoch_start
         train_loss = train_metrics['loss']
         train_dice_incl = train_metrics['dice_include_background']
         train_dice_excl = train_metrics['dice_exclude_background']
@@ -344,7 +348,9 @@ def main(args=None, sam_args=None, saver=None):
           f"train_iou_incl={train_iou_incl:.4f} | "
           f"train_iou_excl={train_iou_excl:.4f}\n")
 
+        val_start = time.time()
         val_metrics = inference_dataloader(val_context, epoch)
+        val_time = time.time() - val_start
         val_loss = val_metrics['loss']
         val_dice_excl = val_metrics['dice_exclude_background']
         val_dice_incl = val_metrics['dice_include_background']
@@ -364,6 +370,11 @@ def main(args=None, sam_args=None, saver=None):
           f"val_iou_incl={val_iou_incl:.4f} | "
           f"val_iou_excl={val_iou_excl:.4f}\n")
         
+        print(f"[MAIN] [Epoch {epoch}] "
+          f"time: {train_time:.1f} seconds +{val_time:.1f} seconds | "
+          f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
+          f"train_dice={train_dice_excl:.4f} | val_dice={val_dice_excl:.4f}\n")
+        
         if best_metric_name == 'dice_exclude_background': metric = val_dice_excl
         elif best_metric_name == 'dice_include_background': metric = val_dice_incl
         elif best_metric_name == 'iou_exclude_background': metric = val_iou_excl
@@ -376,8 +387,14 @@ def main(args=None, sam_args=None, saver=None):
             print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
             saver.log_best(epoch, best)
         print()
+
     if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
         
+    total_time = time.time() - total_start
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
+    seconds = int(total_time % 60)
+    print(f"[MAIN] ✓ Training complete. Total time: {hours} h {minutes} m {seconds} s ({total_time:.0f} s)")
     print(f"[MAIN] ✓ Training complete. Best {best_metric_name} = {best:.4f}") 
           
 
