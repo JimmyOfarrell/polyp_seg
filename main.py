@@ -371,7 +371,7 @@ def main(args=None, sam_args=None, saver=None):
           f"val_iou_excl={val_iou_excl:.4f}\n")
         
         print(f"[MAIN] [Epoch {epoch}] "
-          f"time: {train_time:.1f} seconds +{val_time:.1f} seconds | "
+          f"time: {train_time:.1f} seconds + {val_time:.1f} seconds | "
           f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
           f"train_dice={train_dice_excl:.4f} | val_dice={val_dice_excl:.4f}\n")
         
