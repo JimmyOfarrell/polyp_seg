@@ -98,7 +98,7 @@ else:
     # Attempt 1: gdown (best for Google Drive + supports resume)
     try:
         import gdown
-        gdown.download(model_data['url'], str(CKPT_PATH), quiet=False, fuzzy=True)
+        gdown.download(model_data['url'], str(CKPT_PATH), quiet=False)
     except ImportError:
         print(" [WARN] 'gdown' not installed. Falling back to wget.")
         subprocess.run(
