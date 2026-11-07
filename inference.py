@@ -27,7 +27,6 @@ def inference_dataloader(val_context, epoch):
     use_aggregator = args['use_aggregator']
     input_size = args['input_size']
     image_key, mask_key = args['image_key'], args['mask_key']
-    norm_mode = args['norm_mode']
 
     apply_sigm = True
 

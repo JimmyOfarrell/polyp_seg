@@ -12,8 +12,7 @@ from segment_anything import sam_model_registry
 from utils.dataset_utils import get_all_test_dataloaders
 from tqdm.auto import tqdm
 from torch.amp import autocast
-
-from utils.utils import get_input_dict, str2bool
+from utils.utils import get_input_dict, str2bool, safe_mean
 from utils.saver import Saver
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -216,13 +215,13 @@ def inference_dataloader(test_context, epoch):
         conf_matr_metric_exclude_background.reset() 
 
         pbar.set_description(f'(test | polyp) | '
-                                f'dice_incl: {np.nanmean(dice_list_include_background):.4f} | '
-                                f'dice_excl: {np.nanmean(dice_list_exclude_background):.4f} | '
-                                f'iou_incl: {np.nanmean(iou_list_include_background):.4f} | '
-                                f'iou_excl: {np.nanmean(iou_list_exclude_background):.4f} | '
-                                f'hd_excl: {np.nanmean(hd_list_exclude_background):.4f} | '
-                                f'hd95_excl: {np.nanmean(hd95_list_exclude_background):.4f} | '
-                                f'asd_excl: {np.nanmean(surface_distance_list_exclude_background):.4f}')
+                                f'dice_incl: {safe_mean(dice_list_include_background):.4f} | '
+                                f'dice_excl: {safe_mean(dice_list_exclude_background):.4f} | '
+                                f'iou_incl: {safe_mean(iou_list_include_background):.4f} | '
+                                f'iou_excl: {safe_mean(iou_list_exclude_background):.4f} | '
+                                f'hd_excl: {safe_mean(hd_list_exclude_background):.4f} | '
+                                f'hd95_excl: {safe_mean(hd95_list_exclude_background):.4f} | '
+                                f'asd_excl: {safe_mean(surface_distance_list_exclude_background):.4f}')
 
     if args['log_histograms']:
         saver.log_histogram('dice_include', dice_list_include_background, epoch)
@@ -240,35 +239,35 @@ def inference_dataloader(test_context, epoch):
             saver.log_histogram(f'{m}_exclude', metrics_list_exclude_background[m], epoch)
 
     saver.save_json(metrics_per_el, 'metrics_per_el')
-    saver.log_scalar('dice_include', np.nanmean(dice_list_include_background), epoch)
-    saver.log_scalar('dice_exclude', np.nanmean(dice_list_exclude_background), epoch)
-    saver.log_scalar('iou_include', np.nanmean(iou_list_include_background), epoch)
-    saver.log_scalar('iou_exclude', np.nanmean(iou_list_exclude_background), epoch)
-    saver.log_scalar('hd_include', np.nanmean(hd_list_include_background), epoch)
-    saver.log_scalar('hd_exclude', np.nanmean(hd_list_exclude_background), epoch)
-    saver.log_scalar('hd95_include', np.nanmean(hd95_list_include_background), epoch)
-    saver.log_scalar('hd95_exclude', np.nanmean(hd95_list_exclude_background), epoch)
-    saver.log_scalar('asd_include', np.nanmean(surface_distance_list_include_background), epoch)
-    saver.log_scalar('asd_exclude', np.nanmean(surface_distance_list_exclude_background), epoch)
+    saver.log_scalar('dice_include', safe_mean(dice_list_include_background), epoch)
+    saver.log_scalar('dice_exclude', safe_mean(dice_list_exclude_background), epoch)
+    saver.log_scalar('iou_include', safe_mean(iou_list_include_background), epoch)
+    saver.log_scalar('iou_exclude', safe_mean(iou_list_exclude_background), epoch)
+    saver.log_scalar('hd_include', safe_mean(hd_list_include_background), epoch)
+    saver.log_scalar('hd_exclude', safe_mean(hd_list_exclude_background), epoch)
+    saver.log_scalar('hd95_include', safe_mean(hd95_list_include_background), epoch)
+    saver.log_scalar('hd95_exclude', safe_mean(hd95_list_exclude_background), epoch)
+    saver.log_scalar('asd_include', safe_mean(surface_distance_list_include_background), epoch)
+    saver.log_scalar('asd_exclude', safe_mean(surface_distance_list_exclude_background), epoch)
     for m in metric_names:
-        saver.log_scalar(f'{m}_include', np.nanmean(metrics_list_include_background[m]), epoch)
-        saver.log_scalar(f'{m}_exclude', np.nanmean(metrics_list_exclude_background[m]), epoch) 
+        saver.log_scalar(f'{m}_include', safe_mean(metrics_list_include_background[m]), epoch)
+        saver.log_scalar(f'{m}_exclude', safe_mean(metrics_list_exclude_background[m]), epoch) 
 
     m_dict_log = {
-            'dice_include': np.nanmean(dice_list_include_background),
-            'dice_exclude': np.nanmean(dice_list_exclude_background),
-            'iou_include': np.nanmean(iou_list_include_background),
-            'iou_exclude': np.nanmean(iou_list_exclude_background),
-            'hd_include': np.nanmean(hd_list_include_background), 
-            'hd_exclude': np.nanmean(hd_list_exclude_background), 
-            'hd95_include': np.nanmean(hd95_list_include_background), 
-            'hd95_exclude': np.nanmean(hd95_list_exclude_background), 
-            'asd_include': np.nanmean(surface_distance_list_include_background), 
-            'asd_exclude': np.nanmean(surface_distance_list_exclude_background)}
+            'dice_include': safe_mean(dice_list_include_background),
+            'dice_exclude': safe_mean(dice_list_exclude_background),
+            'iou_include': safe_mean(iou_list_include_background),
+            'iou_exclude': safe_mean(iou_list_exclude_background),
+            'hd_include': safe_mean(hd_list_include_background), 
+            'hd_exclude': safe_mean(hd_list_exclude_background), 
+            'hd95_include': safe_mean(hd95_list_include_background), 
+            'hd95_exclude': safe_mean(hd95_list_exclude_background), 
+            'asd_include': safe_mean(surface_distance_list_include_background), 
+            'asd_exclude': safe_mean(surface_distance_list_exclude_background)}
 
     for m in metric_names:
-        m_dict_log[f'{metric_names_mapping[m]}_include'] = np.nanmean(metrics_list_include_background[m])
-        m_dict_log[f'{metric_names_mapping[m]}_exclude'] = np.nanmean(metrics_list_exclude_background[m])
+        m_dict_log[f'{metric_names_mapping[m]}_include'] = safe_mean(metrics_list_include_background[m])
+        m_dict_log[f'{metric_names_mapping[m]}_exclude'] = safe_mean(metrics_list_exclude_background[m])
 
     m_dict_log['Exp_name'] = args['experiment_name']
     m_dict_log['Step'] = epoch + 1 
@@ -278,14 +277,14 @@ def inference_dataloader(test_context, epoch):
         saver.create_table(columns)
     saver.log_table_row(epoch +1, m_dict_log)
 
-    return {'dice_include_background':  float(np.nanmean(dice_list_include_background)),
-    'dice_exclude_background': float(np.nanmean(dice_list_exclude_background)),
-    'iou_include_background':   float(np.nanmean(iou_list_include_background)),
-    'iou_exclude_background':   float(np.nanmean(iou_list_exclude_background)),
-    'hd95_exclude':             float(np.nanmean(hd95_list_exclude_background)),
-    'asd_exclude':              float(np.nanmean(surface_distance_list_exclude_background)),
-    'sensitivity_exclude':      float(np.nanmean(metrics_list_exclude_background['sensitivity'])),
-    'fnr_exclude':              float(np.nanmean(metrics_list_exclude_background['false_negative_rate'])),}
+    return {'dice_include_background':  float(safe_mean(dice_list_include_background)),
+    'dice_exclude_background': float(safe_mean(dice_list_exclude_background)),
+    'iou_include_background':   float(safe_mean(iou_list_include_background)),
+    'iou_exclude_background':   float(safe_mean(iou_list_exclude_background)),
+    'hd95_exclude':             float(safe_mean(hd95_list_exclude_background)),
+    'asd_exclude':              float(safe_mean(surface_distance_list_exclude_background)),
+    'sensitivity_exclude':      float(safe_mean(metrics_list_exclude_background['sensitivity'])),
+    'fnr_exclude':              float(safe_mean(metrics_list_exclude_background['false_negative_rate'])),}
    
     
                                                
@@ -386,8 +385,8 @@ def main(args=None, sam_args= None, saver=None):
             f"{r.get('hd95_exclude', 0):>8.2f} | {r.get('asd_exclude', 0):>8.2f} | "
             f"{r.get('sensitivity_exclude', 0):>8.4f} | {r.get('fnr_exclude', 0):>8.4f}")
     print(f"{'-'*18}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}")
-    mean_dice = np.mean([r['dice_exclude_background'] for r in test_results.values()])
-    mean_iou  = np.mean([r['iou_exclude_background']  for r in test_results.values()])
+    mean_dice = safe_mean([r['dice_exclude_background'] for r in test_results.values()])
+    mean_iou  = safe_mean([r['iou_exclude_background']  for r in test_results.values()])
     print(f"{'Mean':<18} | {mean_dice:>8.4f} | {mean_iou:>8.4f} |")
     print(f"{'='*80}")
 
@@ -427,7 +426,7 @@ For usage examples, see README.md
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     parser.add_argument('--ckpt_path', type=str, required=True, help='Path to trained checkpoint (required for testing)')
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
-    parser.add_argument('--segmentor_net_type', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample'], help='Aggregator head')
+    parser.add_argument('--segmentor_net_type', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample', 'ConvTwoUpsample', 'DeepConvUpsample'], help='Aggregator head')
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')
@@ -469,4 +468,5 @@ For usage examples, see README.md
     
     saver.log_hparams(args)
     main(args=args, sam_args=sam_args, saver=saver)
+    saver.close()
     print('='*120)

@@ -25,7 +25,7 @@ def get_model(args, backbone_weight_dir='', embedding_dim=256, use_tanh=True):
             else: state_dict = ckpt
         else: state_dict = ckpt.state_dict()
 
-        strict = not args.get('load_ckpt_single_dict', False)
+        strict = True
 
         try: result = model.load_state_dict(state_dict, strict=strict)
         except RuntimeError as e: raise RuntimeError(f"Failed to load state_dict into model: {e}") from e

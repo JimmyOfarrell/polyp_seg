@@ -3,6 +3,7 @@ import torch.optim as optim
 import math
 import wandb
 import time
+import numpy as np
 import argparse
 import os
 import sys
@@ -110,6 +111,8 @@ def main(args=None, sam_args=None, saver=None):
         try: sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
         except Exception as e: raise RuntimeError(f"Failed to load SAM '{sam_args['model_type']}' from '{sam_args['sam_checkpoint']}': {e}")
         sam.to(device=device)
+        sam.eval()
+        for p in sam.parameters(): p.requires_grad = False
         sam_params = sum(p.numel() for p in sam.parameters())
         sam_image_encoder_params = sum(p.numel() for p in sam.image_encoder.parameters())
         sam_prompt_encoder_params = sum(p.numel() for p in sam.prompt_encoder.parameters())
@@ -135,6 +138,9 @@ def main(args=None, sam_args=None, saver=None):
         img_dim = int(args['input_size'])
         print(f"[MAIN] {'SAM status':<32}: Disabled (not needed for this scenario)")
         print(f"[MAIN] {'Input resolution':<32}: {img_dim}x{img_dim}\n")
+
+    if use_sam and args['use_aggregator']: raise ValueError("--use_sam True requires --use_aggregator False (Phase 1 uses ModelEmb)")
+    if not use_sam and not args['use_aggregator']: raise ValueError("--use_sam False requires --use_aggregator True (Phase 2 uses HardNetSegmentor)")
 
     if not args['use_aggregator']:
         print('*'*80)
@@ -172,7 +178,6 @@ def main(args=None, sam_args=None, saver=None):
     args['phase_2_label']  = scenario_label
     args['phase_2_mode']   = args['phase_2_mode']
 
-    
     n_total     = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_frozen    = n_total - n_trainable
@@ -381,21 +386,23 @@ def main(args=None, sam_args=None, saver=None):
         elif best_metric_name == 'iou_include_background': metric = val_iou_incl
         else: raise ValueError(f"Unsupported best_metric '{best_metric_name}'. Choose from: 'dice_exclude_background', 'dice_include_background', 'iou_exclude_background', 'iou_include_background'.")  
 
-        if metric > best:
-            torch.save(model.state_dict(), args['best_ckpt_path'])
+        if not np.isnan(metric) and metric > best:
+            saver.save_model(model, 'net_best', epoch, fixed_name=True)
             best = metric
             print(f'[MAIN] ✓ New best {best_metric_name} = {best:.4f} @ epoch {epoch}')
             saver.log_best(epoch, best)
         print()
 
-    if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
+        if epoch % int(args.get('save_every', 10)) == 0 or epoch == num_epochs-1: saver.save_model(model, 'net_last', epoch, fixed_name=True)
         
     total_time = time.time() - total_start
     hours = int(total_time // 3600)
     minutes = int((total_time % 3600) // 60)
     seconds = int(total_time % 60)
     print(f"[MAIN] ✓ Training complete. Total time: {hours} h {minutes} m {seconds} s ({total_time:.0f} s)")
-    print(f"[MAIN] ✓ Training complete. Best {best_metric_name} = {best:.4f}") 
+    if best > -1.0: print(f"[MAIN] ✓ Training complete. Best {best_metric_name} = {best:.4f}")
+    else: print(f"[MAIN] ⚠️ Training complete. No valid '{best_metric_name}' recorded (all NaN).") 
+    saver.close()
           
 
 if __name__ == '__main__':
@@ -437,7 +444,7 @@ For usage examples, see README.md
     parser.add_argument('--pretrained', type=str2bool, default=True, help='Use ImageNet pretrained weights')
     parser.add_argument('--ckpt_path', type=str, default=None, help='Path to checkpoint to resume/init from')
     parser.add_argument('--net', type=str, default='HardNetSegmentor', help='Segmentor net (phase 2)')
-    parser.add_argument('--segmentor_net_type', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample'], help='Aggregator head')
+    parser.add_argument('--segmentor_net_type', type=str, default='PointwiseConv', choices=['PointwiseConv', 'ConvUpsample', 'TransposeConvUpsample', 'ConvTwoUpsample', 'DeepConvUpsample'], help='Aggregator head')
     parser.add_argument('--out_channels', type=int, default=2, help='Output channels')
     parser.add_argument('--upsample_factor_list', type=int, nargs='+', default=[2, 2], help='Upsample factors for ConvUpsample aggregator')
     parser.add_argument('--segmentor_finetune_backbone', type=str2bool, default=False, help='If we want to train the miniSegmentor finetuning also the backbone')

@@ -12,7 +12,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
 class Saver:
     def __init__(self, output_folder, args):
         self.experiment_name = args['experiment_name']
@@ -234,153 +233,35 @@ class Saver:
             wandb.log({f'{name}_histogram': wandb.plot.histogram(table, f"{name}", title=f"{name} Histogram")}, step=iter_n)
         except Exception as e: print(f"[SAVER] log_histogram '{name}' failed: {type(e).__name__}: {e}")    
         
-               
-
     def close(self):
-        '''
-        Close Tensorboard connection
-        '''
-        self.writer.close()
-        self.metrics_csv_file.close()
-
-
-
-    def log_images(self, title: str, images_vector: torch.Tensor):
-        '''
-        Log images to WANDB
-        '''
-
-        img_grid = torchvision.utils.make_grid(
-            images_vector, normalize=True, nrow=10)
-        images = wandb.Image(img_grid)
-        wandb.log({title: images})  
-
-    
-    def log_text(self,title:str,text:str,step:int):
-        self.writer.add_text(title,text,step)
-
-    
-    @torch.no_grad()
-    def save_images(self, images: torch.Tensor,masks: torch.Tensor, name: str, step: int):
-        '''
-        Save images to disk
-        '''
-        num_images = images.shape[-1]
-        assert num_images == masks.shape[-1]
-        images = images.cpu().detach().numpy()
-        masks = masks.cpu().detach().numpy()
-        cols = int(np.ceil(np.sqrt(num_images)))
-        rows = int(np.ceil(num_images / cols))
-
-        fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(cols * 2, rows * 2))
-
-        for i in range(rows * cols):
-            ax = axes[i // cols, i % cols]
-            if i < num_images:
-                ax.imshow(images[...,i], cmap='gray')
-                ax.imshow(masks[...,i], cmap='hot', alpha=0.3)
-            ax.axis('off')
-        for i in range(num_images, rows * cols):
-            fig.delaxes(axes.flatten()[i])
-        plt.tight_layout()
-
-        plt.savefig(os.path.join(self.vis_dir, name+'.png'))
-
-        plt.close()
-        
+        try: self.writer.close()
+        except Exception as e: print(f"[SAVER] TensorBoard writer close failed: {type(e).__name__}: {e}")
+        if self.wandb_enabled and self.wandb_run is not None:
+            try: self.wandb_run.finish()
+            except Exception as e: print(f"[SAVER] W&B run finish failed: {type(e).__name__}: {e}")
     
     def create_table(self, columns=None):
-        """
-        Create (or recreate) the W&B table with the specified columns.
-        If called multiple times, it overwrites any existing table 
-        and clears old rows.
-        
-        :param columns: A list of column names. Must include "Step" 
-                        (or any other index column you prefer).
-                        Example: ["Step", "DiceTrue", "DiceFalse"]
-        """
-        if columns is None:
-            columns = ["Step"]
+        if columns is None: columns = ["Step"]
         self.columns = columns
-        
-        # Create a new table
         self.metrics_table = wandb.Table(columns=self.columns)
-        
-        # Clear any existing row buffer
         self.rows = []
-        
-        #wandb.log({"metrics_table": self.metrics_table})
-        
-    def add_columns(self, new_cols):
-        """
-        Example if you want to dynamically add new columns.
-        """
-        if self.metrics_table is None:
-            raise RuntimeError("No table to expand; please call create_table(...) first.")
-
-        # Filter out columns that already exist
-        new_cols = [col for col in new_cols if col not in self.columns]
-        if not new_cols:
-            return  # no new columns needed
-
-        # Expand local columns
-        self.columns.extend(new_cols)
-
-        # Create new table with updated columns
-        new_table = wandb.Table(columns=self.columns)
-
-        # Copy old rows, adding None for new columns
-        updated_rows = []
-        for old_row in self.rows:
-            # Match old_row with old columns
-            row_dict = dict(zip(self.columns[:len(old_row)], old_row))
-            new_row = []
-            for col in self.columns:
-                new_row.append(row_dict.get(col, None))
-            updated_rows.append(new_row)
-            new_table.add_data(*new_row)
-
-        # Replace the old table & row buffer
-        self.metrics_table = new_table
-        self.rows = updated_rows
-
-        wandb.log({"metrics_table": self.metrics_table})
-        
+            
     def log_table_row(self, step: int, metrics_dict: dict):
-        """
-        Adds one row of metrics to the W&B table. 
-        You must call create_table() at least once 
-        before using this function.
-        
-        :param step: Integer representing the current step/test run index.
-        :param metrics_dict: {column_name: value}, 
-                             matching the columns in self.columns (excluding "Step").
-        """
-        # Ensure the table is created
         if self.metrics_table is None or self.columns is None: raise RuntimeError("You must call create_table(...) before logging metrics.")
-
-        # Build row data in the same order as self.columns
         row_data = []
         for col in self.columns:
-            if col == "Step":
-                row_data.append(step)
+            if col == "Step": row_data.append(step)
             else:
                 val = metrics_dict.get(col, None)
-                if isinstance(val, torch.Tensor):
-                    val = val.item()  # Convert single-value tensor to float
-                elif isinstance(val, np.ndarray):
-                    val = val.item()  # if it’s a 1-element array
-                if isinstance(val, float):
-                    val = round(val, 4)
+                if isinstance(val, torch.Tensor): val = val.item()
+                elif isinstance(val, np.ndarray): val = val.item()
+                if isinstance(val, float): val = round(val, 4)
                 row_data.append(val)
 
-        # Store row in local buffer
-        self.rows.append(row_data)
         
-        # Add the row to the W&B table
+        self.rows.append(row_data)
         self.metrics_table.add_data(*row_data)
         
-        # Log/update in W&B
         if self.wandb_enabled:
             try: wandb.log({"metrics_table": self.metrics_table, "EPOCH": step}, step=step)
             except Exception as e: print(f"[SAVER] log_table_row failed: {type(e).__name__}: {e}")
