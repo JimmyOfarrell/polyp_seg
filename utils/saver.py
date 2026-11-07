@@ -48,8 +48,8 @@ class Saver:
         print(f"[SAVER] Visualization directory created: {self.vis_dir}\n")
 
         try:
-            wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project, entity=self.wandb_entity)
-            self.wandb_run = wandb.init(settings=wandb_settings, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
+            wandb_settings = wandb.Settings(mode=self.wandb_mode, project=self.wandb_project)
+            self.wandb_run = wandb.init(settings=wandb_settings, entity=self.wandb_entity, tags=self.wandb_tags, name=self.experiment_name, config=args, dir=self.experiment_dir)
             self.wandb_enabled = (self.wandb_mode != 'disabled') and (self.wandb_run is not None)
                 
             if self.wandb_enabled:
