@@ -179,9 +179,9 @@ def get_polyp_transforms(args, sam_image_dim=None, get_bbox=False):
         LoadImageD(KEYS, reader="PILReader", reverse_indexing=False),
         EnsureChannelFirstD(keys=KEYS),
         SaveOriginalShapeD(image_key=args['image_key']),
-        CLAHETransformd(keys=[args['image_key']], clip_limit=4.0, grid_size=(8, 8), p=0.3),
-        HSVTransformd(keys=[args['image_key']], hue_shift=20, sat_shift=30, val_shift=0, p=0.3),
-        UnsharpMaskTransformd(keys=[args['image_key']], sigma=1.0, strength=0.3, p=0.2),
+        CLAHETransformd(keys=[args['image_key']], clip_limit=2.0, grid_size=(8, 8), p=0.3),
+        HSVTransformd(keys=[args['image_key']], hue_shift=10, sat_shift=15, val_shift=0, p=0.3),
+        UnsharpMaskTransformd(keys=[args['image_key']], sigma=1.0, strength=0.2, p=0.15),
         ScaleIntensityRangeD(keys=[args['image_key']], a_min=0.0, a_max=255.0, b_min=0.0, b_max=1.0, clip=True),
         RandScaleIntensityd(keys=[args['image_key']], factors=0.2, channel_wise=True, prob=0.3),
         NormalizeIntensityD(keys=[args['image_key']], subtrahend=IMAGENET_MEAN, divisor=IMAGENET_STD, channel_wise=True),
@@ -192,7 +192,7 @@ def get_polyp_transforms(args, sam_image_dim=None, get_bbox=False):
         RandRotate90D(keys=KEYS, prob=0.5, spatial_axes=(0, 1)),
         RandRotated(keys=KEYS, range_x=0.44, mode=('bilinear', 'nearest'), padding_mode='zeros', keep_size=True, prob=0.4),
         RandZoomd(keys=KEYS, min_zoom=0.9, max_zoom=1.1, mode=('bilinear', 'nearest'), padding_mode='constant', prob=0.3),
-        Rand2DElasticd(keys=KEYS, spacing=(30, 30), magnitude_range=(20, 40), mode=('bilinear', 'nearest'), padding_mode='zeros', spatial_size=(sam_image_dim, sam_image_dim), prob=0.3),
+        Rand2DElasticd(keys=KEYS, spacing=(50, 50), magnitude_range=(5, 10), mode=('bilinear', 'nearest'), padding_mode='zeros', spatial_size=(sam_image_dim, sam_image_dim), prob=0.2),
         RandGaussianSmoothd(keys=[args['image_key']], sigma_x=(0.25, 1.0), sigma_y=(0.25, 1.0), sigma_z=(0, 0), prob=0.2),
         EnsureTyped(keys=KEYS)])
 
