@@ -108,11 +108,11 @@ def train_single_epoch(train_context, epoch):
                 sam_binary = post_trans(sam_target_resized)
                 sam_onehot = one_hot(sam_binary)    
             
-            if getattr(saver, 'wandb_enabled', False) and args['save_train_images'] and ix < 10 and epoch % 5 == 0:
+            if getattr(saver, 'wandb_enabled', False) and args['save_train_images'] and ix < 20 and epoch % 2 == 0:
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
                 pred_2d = onehot_masks[:, 1].detach()
                 gt_2d   = gts_resized.squeeze(1).detach()
-                max_images_to_log = 4
+                max_images_to_log = 8
                 n_log = min(max_images_to_log, imgs_resized.shape[0])
                 saver.log_samples_2d(imgs_resized[:n_log].detach(), pred_2d[:n_log].detach(), gt_2d[:n_log].detach(), step=epoch, name=f"batch_{ix}", phase='train')
 
