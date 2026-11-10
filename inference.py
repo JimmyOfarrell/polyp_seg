@@ -83,7 +83,7 @@ def inference_dataloader(val_context, epoch):
             else: raise ValueError(f"Unexpected mask channels: {masks.shape[1]}")
 
             
-            if (getattr(saver, 'wandb_enabled', False)) and args['save_val_images'] and ix < 10 and epoch % 2 == 0:
+            if (getattr(saver, 'wandb_enabled', False)) and args['save_val_images'] and ix < 20 and epoch % 2 == 0:
                 imgs_resized = F.interpolate(orig_imgs, size=size, mode='bilinear', align_corners=False)
                 pred_2d = onehot_masks[:, 1].detach()
                 gt_2d   = gts_resized.squeeze(1).detach()

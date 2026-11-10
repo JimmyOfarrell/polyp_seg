@@ -192,7 +192,6 @@ def get_polyp_transforms(args, sam_image_dim=None, get_bbox=False):
         RandRotate90D(keys=KEYS, prob=0.5, spatial_axes=(0, 1)),
         RandRotated(keys=KEYS, range_x=0.44, mode=('bilinear', 'nearest'), padding_mode='zeros', keep_size=True, prob=0.4),
         RandZoomd(keys=KEYS, min_zoom=0.9, max_zoom=1.1, mode=('bilinear', 'nearest'), padding_mode='constant', prob=0.3),
-        Rand2DElasticd(keys=KEYS, spacing=(50, 50), magnitude_range=(5, 10), mode=('bilinear', 'nearest'), padding_mode='zeros', spatial_size=(sam_image_dim, sam_image_dim), prob=0.2),
         RandGaussianSmoothd(keys=[args['image_key']], sigma_x=(0.25, 1.0), sigma_y=(0.25, 1.0), sigma_z=(0, 0), prob=0.2),
         EnsureTyped(keys=KEYS)])
 
