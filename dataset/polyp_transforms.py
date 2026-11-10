@@ -8,7 +8,7 @@ from monai.transforms import (
     MapTransform, Compose, LoadImageD, EnsureChannelFirstD, ScaleIntensityRangeD,
     NormalizeIntensityD, ResizeWithPadOrCropd, RandFlipD, RandRotate90D, EnsureTyped,
     RandRotated, RandZoomd, Rand2DElasticd, RandGaussianSmoothd,
-    RandScaleIntensityd)
+    RandScaleIntensityd, RandGaussianNoised, RandShiftIntensityd )
 
 
 class ResizeWithRatio(MapTransform):
@@ -179,20 +179,22 @@ def get_polyp_transforms(args, sam_image_dim=None, get_bbox=False):
         LoadImageD(KEYS, reader="PILReader", reverse_indexing=False),
         EnsureChannelFirstD(keys=KEYS),
         SaveOriginalShapeD(image_key=args['image_key']),
-        CLAHETransformd(keys=[args['image_key']], clip_limit=2.0, grid_size=(8, 8), p=0.3),
-        HSVTransformd(keys=[args['image_key']], hue_shift=10, sat_shift=15, val_shift=0, p=0.3),
-        UnsharpMaskTransformd(keys=[args['image_key']], sigma=1.0, strength=0.2, p=0.15),
+        CLAHETransformd(keys=[args['image_key']], clip_limit=4.0, grid_size=(8, 8), p=0.4),
+        HSVTransformd(keys=[args['image_key']], hue_shift=15, sat_shift=20, val_shift=0, p=0.4),
+        UnsharpMaskTransformd(keys=[args['image_key']], sigma=1.0, strength=0.3, p=0.25),
         ScaleIntensityRangeD(keys=[args['image_key']], a_min=0.0, a_max=255.0, b_min=0.0, b_max=1.0, clip=True),
-        RandScaleIntensityd(keys=[args['image_key']], factors=0.2, channel_wise=True, prob=0.3),
+        RandScaleIntensityd(keys=[args['image_key']], factors=0.2, channel_wise=True, prob=0.4),
+        RandShiftIntensityd(keys=[args['image_key']], offsets=0.05, channel_wise=True, prob=0.3),
+        RandGaussianNoised(keys=[args['image_key']], std=0.02, prob=0.3),
         NormalizeIntensityD(keys=[args['image_key']], subtrahend=IMAGENET_MEAN, divisor=IMAGENET_STD, channel_wise=True),
         ResizeWithRatio(image_key=KEYS[0], mask_key=KEYS[1], image_size=sam_image_dim, image_mode="bilinear", mask_mode='nearest', antialias=True),
         ResizeWithPadOrCropd(keys=KEYS, spatial_size=(sam_image_dim, sam_image_dim), mode='constant'),
         RandFlipD(keys=KEYS, prob=0.5, spatial_axis=0),
         RandFlipD(keys=KEYS, prob=0.5, spatial_axis=1),
         RandRotate90D(keys=KEYS, prob=0.5, spatial_axes=(0, 1)),
-        RandRotated(keys=KEYS, range_x=0.44, mode=('bilinear', 'nearest'), padding_mode='zeros', keep_size=True, prob=0.4),
-        RandZoomd(keys=KEYS, min_zoom=0.9, max_zoom=1.1, mode=('bilinear', 'nearest'), padding_mode='constant', prob=0.3),
-        RandGaussianSmoothd(keys=[args['image_key']], sigma_x=(0.25, 1.0), sigma_y=(0.25, 1.0), sigma_z=(0, 0), prob=0.2),
+        RandRotated(keys=KEYS, range_x=0.44, mode=('bilinear', 'nearest'), padding_mode='zeros', keep_size=True, prob=0.5),
+        RandZoomd(keys=KEYS, min_zoom=0.9, max_zoom=1.1, mode=('bilinear', 'nearest'), padding_mode='constant', prob=0.4),
+        RandGaussianSmoothd(keys=[args['image_key']], sigma_x=(0.25, 1.0), sigma_y=(0.25, 1.0), sigma_z=(0, 0), prob=0.3),
         EnsureTyped(keys=KEYS)])
 
     val_test_transforms = Compose([
