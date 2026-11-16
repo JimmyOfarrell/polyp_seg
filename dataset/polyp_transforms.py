@@ -180,7 +180,6 @@ def get_polyp_transforms(args, sam_image_dim=None, get_bbox=False):
         EnsureChannelFirstD(keys=KEYS),
         SaveOriginalShapeD(image_key=args['image_key']),
         CLAHETransformd(keys=[args['image_key']], clip_limit=3.0, grid_size=(8, 8), p=0.4),
-        HSVTransformd(keys=[args['image_key']], hue_shift=15, sat_shift=20, val_shift=0, p=0.3),
         ScaleIntensityRangeD(keys=[args['image_key']], a_min=0.0, a_max=255.0, b_min=0.0, b_max=1.0, clip=True),
         RandScaleIntensityd(keys=[args['image_key']], factors=0.2, channel_wise=True, prob=0.3),
         RandGaussianNoised(keys=[args['image_key']], std=0.01, prob=0.15),
